@@ -12,8 +12,7 @@ void main() {
   final questSystem = QuestSystem(
     timetableSystem: timetableSystem,
   );
-final studyTimer = StudyTimer();
-  final timetableSystem = TimetableSystem();
+  final studyTimer = StudyTimer();
 
   runApp(
     SoloSystemApp(
