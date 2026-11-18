@@ -1,8 +1,9 @@
-
 import 'package:flutter/material.dart';
+import 'player_system.dart';
 
 void main() {
-  runApp(const SoloSystemApp());
+  final player = PlayerSystem();
+  runApp(SoloSystemApp(player: player));
 }
 
 const Color bg = Color(0xFF050B18);
@@ -12,7 +13,9 @@ const Color cyan = Color(0xFF00E5FF);
 const Color muted = Color(0xFF8295B3);
 
 class SoloSystemApp extends StatelessWidget {
-  const SoloSystemApp({super.key});
+  final PlayerSystem player;
+
+  const SoloSystemApp({super.key, required this.player});
 
   @override
   Widget build(BuildContext context) {
@@ -29,13 +32,15 @@ class SoloSystemApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const SystemHome(),
+      home: SystemHome(player: player),
     );
   }
 }
 
 class SystemHome extends StatefulWidget {
-  const SystemHome({super.key});
+  final PlayerSystem player;
+
+  const SystemHome({super.key, required this.player});
 
   @override
   State<SystemHome> createState() => _SystemHomeState();
@@ -44,49 +49,64 @@ class SystemHome extends StatefulWidget {
 class _SystemHomeState extends State<SystemHome> {
   int selectedIndex = 0;
 
-  final List<Widget> pages = const [
-    DashboardPage(),
-    QuestPage(),
-    StatusPage(),
-    SettingsPage(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    widget.player.loadPlayer();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: pages[selectedIndex],
-      ),
-      bottomNavigationBar: NavigationBar(
-        backgroundColor: panel,
-        indicatorColor: blue.withValues(alpha: 0.18),
-        selectedIndex: selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() => selectedIndex = index);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard, color: cyan),
-            label: 'Home',
+    return AnimatedBuilder(
+      animation: widget.player,
+      builder: (context, child) {
+        final pages = [
+          DashboardPage(player: widget.player),
+          QuestPage(player: widget.player),
+          StatusPage(player: widget.player),
+          SettingsPage(player: widget.player),
+        ];
+
+        return Scaffold(
+          body: SafeArea(
+            child: widget.player.isLoaded
+                ? pages[selectedIndex]
+                : const Center(
+                    child: CircularProgressIndicator(color: cyan),
+                  ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.assignment_outlined),
-            selectedIcon: Icon(Icons.assignment, color: cyan),
-            label: 'Quests',
+          bottomNavigationBar: NavigationBar(
+            backgroundColor: panel,
+            indicatorColor: blue.withValues(alpha: 0.18),
+            selectedIndex: selectedIndex,
+            onDestinationSelected: (index) {
+              setState(() => selectedIndex = index);
+            },
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.dashboard_outlined),
+                selectedIcon: Icon(Icons.dashboard, color: cyan),
+                label: 'Home',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.assignment_outlined),
+                selectedIcon: Icon(Icons.assignment, color: cyan),
+                label: 'Quests',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_outline),
+                selectedIcon: Icon(Icons.person, color: cyan),
+                label: 'Status',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings, color: cyan),
+                label: 'Settings',
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person, color: cyan),
-            label: 'Status',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings, color: cyan),
-            label: 'Settings',
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -94,7 +114,9 @@ class _SystemHomeState extends State<SystemHome> {
 // DASHBOARD
 
 class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key});
+  final PlayerSystem player;
+
+  const DashboardPage({super.key, required this.player});
 
   @override
   Widget build(BuildContext context) {
@@ -104,9 +126,9 @@ class DashboardPage extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
+            const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text(
                   'SOLO SYSTEM',
                   style: TextStyle(
@@ -185,11 +207,11 @@ class DashboardPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'PLAYER',
                           style: TextStyle(
                             color: muted,
@@ -197,19 +219,19 @@ class DashboardPage extends StatelessWidget {
                             letterSpacing: 2,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          'SHADOW HUNTER',
-                          style: TextStyle(
+                          player.playerName.toUpperCase(),
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          'CLASS: BEGINNER',
-                          style: TextStyle(
+                          '${player.rank} • ${player.title}',
+                          style: const TextStyle(
                             color: cyan,
                             fontSize: 10,
                             letterSpacing: 1,
@@ -218,9 +240,9 @@ class DashboardPage extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const Text(
-                    'LV. 01',
-                    style: TextStyle(
+                  Text(
+                    'LV. ${player.level.toString().padLeft(2, '0')}',
+                    style: const TextStyle(
                       color: cyan,
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -231,13 +253,17 @@ class DashboardPage extends StatelessWidget {
 
               const SizedBox(height: 22),
 
-              const Row(
+              Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('EXPERIENCE POINTS',
-                      style: TextStyle(color: muted, fontSize: 10)),
-                  Text('250 / 1000 XP',
-                      style: TextStyle(color: cyan, fontSize: 11)),
+                  const Text(
+                    'EXPERIENCE POINTS',
+                    style: TextStyle(color: muted, fontSize: 10),
+                  ),
+                  Text(
+                    '${player.xp} / ${player.xpRequired} XP',
+                    style: const TextStyle(color: cyan, fontSize: 11),
+                  ),
                 ],
               ),
 
@@ -245,19 +271,19 @@ class DashboardPage extends StatelessWidget {
 
               ClipRRect(
                 borderRadius: BorderRadius.circular(20),
-                child: const LinearProgressIndicator(
-                  value: 0.25,
+                child: LinearProgressIndicator(
+                  value: player.xpProgress,
                   minHeight: 9,
-                  backgroundColor: Color(0xFF24354C),
+                  backgroundColor: const Color(0xFF24354C),
                   color: cyan,
                 ),
               ),
 
               const SizedBox(height: 9),
 
-              const Text(
-                '750 XP REQUIRED FOR NEXT LEVEL',
-                style: TextStyle(color: muted, fontSize: 9),
+              Text(
+                '${player.xpRequired - player.xp} XP REQUIRED FOR NEXT LEVEL',
+                style: const TextStyle(color: muted, fontSize: 9),
               ),
             ],
           ),
@@ -269,8 +295,8 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        Row(
-          children: const [
+        const Row(
+          children: [
             Expanded(
               child: VitalCard(
                 title: 'HP',
@@ -309,8 +335,8 @@ class DashboardPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: const [
+              const Row(
+                children: [
                   Icon(Icons.assignment, color: cyan),
                   SizedBox(width: 10),
                   Text(
@@ -374,8 +400,8 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        Row(
-          children: const [
+        const Row(
+          children: [
             Expanded(
               child: InfoCard(
                 title: 'STUDY TIME',
@@ -599,87 +625,152 @@ class InfoCard extends StatelessWidget {
   }
 }
 
-// OTHER PAGES - TEMPORARY
+// OTHER PAGES
 
 class QuestPage extends StatelessWidget {
-  const QuestPage({super.key});
+  final PlayerSystem player;
+
+  const QuestPage({super.key, required this.player});
 
   @override
   Widget build(BuildContext context) {
-    return const PlaceholderPage(
-      title: 'QUEST CENTER',
-      subtitle: 'YOUR DAILY MISSIONS WILL APPEAR HERE.',
-      icon: Icons.assignment,
+    return Center(
+      child: Text(
+        'QUEST CENTER\n${player.playerName.toUpperCase()}',
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: cyan, letterSpacing: 2),
+      ),
     );
   }
 }
 
 class StatusPage extends StatelessWidget {
-  const StatusPage({super.key});
+  final PlayerSystem player;
+
+  const StatusPage({super.key, required this.player});
 
   @override
   Widget build(BuildContext context) {
-    return const PlaceholderPage(
-      title: 'PLAYER STATUS',
-      subtitle: 'YOUR PLAYER INFORMATION.',
-      icon: Icons.person,
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const SectionTitle(title: 'PLAYER STATUS'),
+        const SizedBox(height: 20),
+        VitalCard(
+          title: 'PLAYER LEVEL',
+          value: 'LV. ${player.level}',
+          icon: Icons.military_tech,
+          color: cyan,
+        ),
+        const SizedBox(height: 14),
+        VitalCard(
+          title: 'CURRENT RANK',
+          value: player.rank,
+          icon: Icons.shield,
+          color: blue,
+        ),
+        const SizedBox(height: 14),
+        VitalCard(
+          title: 'PLAYER TITLE',
+          value: player.title,
+          icon: Icons.workspace_premium,
+          color: Colors.amber,
+        ),
+        const SizedBox(height: 14),
+        VitalCard(
+          title: 'TOTAL XP EARNED',
+          value: '${player.totalXp} XP',
+          icon: Icons.bolt,
+          color: cyan,
+        ),
+      ],
     );
   }
 }
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
+  final PlayerSystem player;
 
-  @override
-  Widget build(BuildContext context) {
-    return const PlaceholderPage(
-      title: 'SYSTEM SETTINGS',
-      subtitle: 'CONFIGURE YOUR SYSTEM.',
-      icon: Icons.settings,
+  const SettingsPage({super.key, required this.player});
+
+  Future<void> editPlayerName(BuildContext context) async {
+    final controller = TextEditingController(
+      text: player.playerName == 'Player' ? '' : player.playerName,
     );
-  }
-}
 
-class PlaceholderPage extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-
-  const PlaceholderPage({
-    super.key,
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(25),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: cyan, size: 65),
-            const SizedBox(height: 20),
-            Text(
-              title,
-              style: const TextStyle(
-                color: cyan,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-              ),
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: panel,
+          title: const Text(
+            'PLAYER IDENTITY',
+            style: TextStyle(color: cyan),
+          ),
+          content: TextField(
+            controller: controller,
+            maxLength: 30,
+            decoration: const InputDecoration(
+              hintText: 'Enter your name',
+              labelText: 'Player Name',
             ),
-            const SizedBox(height: 10),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: muted, fontSize: 11),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('CANCEL'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final name = controller.text.trim();
+
+                if (name.isEmpty) return;
+
+                await player.setPlayerName(name);
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Player name saved successfully!'),
+                    ),
+                  );
+                }
+              },
+              child: const Text('SAVE'),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const SectionTitle(title: 'SETTINGS'),
+        const SizedBox(height: 20),
+        ListTile(
+          tileColor: panel,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: blue.withValues(alpha: 0.35)),
+          ),
+          leading: const Icon(Icons.badge_outlined, color: cyan),
+          title: const Text(
+            'Player Name',
+            style: TextStyle(color: Colors.white),
+          ),
+          subtitle: Text(
+            player.playerName,
+            style: const TextStyle(color: muted),
+          ),
+          trailing: const Icon(Icons.edit, color: cyan),
+          onTap: () => editPlayerName(context),
         ),
-      ),
+      ],
     );
   }
 }
