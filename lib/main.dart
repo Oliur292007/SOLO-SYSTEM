@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'player_system.dart';
 import 'quest_system.dart';
 
@@ -20,7 +21,11 @@ const Color blue = Color(0xFF00BFFF);
 const Color cyan = Color(0xFF00E5FF);
 const Color muted = Color(0xFF8295B3);
 
-class SoloSystemApp extends StatelessWidget {
+// ============================================================
+// APP ROOT (now stateful for theme persistence)
+// ============================================================
+
+class SoloSystemApp extends StatefulWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
 
@@ -31,11 +36,52 @@ class SoloSystemApp extends StatelessWidget {
   });
 
   @override
+  State<SoloSystemApp> createState() => _SoloSystemAppState();
+}
+
+class _SoloSystemAppState extends State<SoloSystemApp> {
+  bool isDarkMode = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTheme();
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+
+    setState(() {
+      isDarkMode = prefs.getBool('dark_mode') ?? true;
+    });
+  }
+
+  Future<void> _changeTheme(bool value) async {
+    setState(() {
+      isDarkMode = value;
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('dark_mode', value);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'SOLO SYSTEM',
       theme: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFF1F5FA),
+        colorScheme: const ColorScheme.light(
+          primary: blue,
+          secondary: cyan,
+          surface: Colors.white,
+        ),
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: bg,
         colorScheme: const ColorScheme.dark(
@@ -45,22 +91,33 @@ class SoloSystemApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
+      themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
       home: SystemHome(
-        player: player,
-        questSystem: questSystem,
+        player: widget.player,
+        questSystem: widget.questSystem,
+        isDarkMode: isDarkMode,
+        onDarkModeChanged: _changeTheme,
       ),
     );
   }
 }
 
+// ============================================================
+// HOME SHELL
+// ============================================================
+
 class SystemHome extends StatefulWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
+  final bool isDarkMode;
+  final ValueChanged<bool> onDarkModeChanged;
 
   const SystemHome({
     super.key,
     required this.player,
     required this.questSystem,
+    required this.isDarkMode,
+    required this.onDarkModeChanged,
   });
 
   @override
@@ -95,7 +152,11 @@ class _SystemHomeState extends State<SystemHome> {
             questSystem: widget.questSystem,
           ),
           StatusPage(player: widget.player),
-          SettingsPage(player: widget.player),
+          SettingsPage(
+            player: widget.player,
+            isDarkMode: widget.isDarkMode,
+            onDarkModeChanged: widget.onDarkModeChanged,
+          ),
         ];
 
         return Scaffold(
@@ -387,8 +448,6 @@ class DashboardPage extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 17),
-
-              // FIX: was const Row containing runtime interpolation
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -402,9 +461,7 @@ class DashboardPage extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 10),
-
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: LinearProgressIndicator(
@@ -414,9 +471,7 @@ class DashboardPage extends StatelessWidget {
                   color: blue,
                 ),
               ),
-
               const SizedBox(height: 15),
-
               ...questSystem.quests.map(
                 (quest) => QuestRow(
                   name: quest.name,
@@ -659,7 +714,7 @@ class InfoCard extends StatelessWidget {
 }
 
 // ============================================================
-// QUEST PAGE (completed)
+// QUEST PAGE
 // ============================================================
 
 class QuestPage extends StatelessWidget {
@@ -765,7 +820,7 @@ class QuestPage extends StatelessWidget {
                 ),
                 if (!completed)
                   TextButton(
-                    onPressed: () => questSystem.completeQuest(quest.id, player),
+                    onPressed: () => questSystem.complete(quest.id),
                     child: const Text(
                       'COMPLETE',
                       style: TextStyle(color: cyan, fontSize: 11),
@@ -783,7 +838,7 @@ class QuestPage extends StatelessWidget {
 }
 
 // ============================================================
-// STATUS PAGE (added)
+// STATUS PAGE
 // ============================================================
 
 class StatusPage extends StatelessWidget {
@@ -879,13 +934,92 @@ class StatusPage extends StatelessWidget {
 }
 
 // ============================================================
-// SETTINGS PAGE (added)
+// SETTINGS PAGE (fully rewritten)
 // ============================================================
 
 class SettingsPage extends StatelessWidget {
   final PlayerSystem player;
+  final bool isDarkMode;
+  final ValueChanged<bool> onDarkModeChanged;
 
-  const SettingsPage({super.key, required this.player});
+  const SettingsPage({
+    super.key,
+    required this.player,
+    required this.isDarkMode,
+    required this.onDarkModeChanged,
+  });
+
+  Future<void> _editPlayerName(BuildContext context) async {
+    final controller = TextEditingController(
+      text: player.playerName,
+    );
+
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: panel,
+          title: const Text(
+            'CHANGE PLAYER NAME',
+            style: TextStyle(color: cyan, fontSize: 16),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 25,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: 'Enter your player name',
+              hintStyle: TextStyle(color: muted),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: blue),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: cyan),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text(
+                'CANCEL',
+                style: TextStyle(color: muted),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  controller.text.trim(),
+                );
+              },
+              child: const Text(
+                'SAVE',
+                style: TextStyle(color: cyan),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (newName == null || newName.trim().isEmpty) return;
+
+    await player.setPlayerName(newName);
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Player name updated successfully!'),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -899,43 +1033,92 @@ class SettingsPage extends StatelessWidget {
           decoration: BoxDecoration(
             color: panel,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: blue.withValues(alpha: 0.35)),
+            border: Border.all(
+              color: blue.withValues(alpha: 0.35),
+            ),
           ),
           child: Column(
             children: [
               ListTile(
-                leading: const Icon(Icons.notifications_outlined, color: cyan),
+                leading: const Icon(
+                  Icons.person_outline,
+                  color: cyan,
+                ),
+                title: const Text(
+                  'Player Name',
+                  style: TextStyle(color: Colors.white),
+                ),
+                subtitle: Text(
+                  player.playerName,
+                  style: const TextStyle(color: muted),
+                ),
+                trailing: const Icon(
+                  Icons.edit,
+                  color: cyan,
+                ),
+                onTap: () => _editPlayerName(context),
+              ),
+
+              const Divider(
+                color: Color(0xFF24354C),
+                height: 1,
+              ),
+
+              ListTile(
+                leading: const Icon(
+                  Icons.notifications_outlined,
+                  color: cyan,
+                ),
                 title: const Text(
                   'Notifications',
                   style: TextStyle(color: Colors.white),
                 ),
-                trailing: Switch(
-                  value: true,
-                  onChanged: (_) {},
-                  activeColor: cyan,
+                trailing: const Text(
+                  'Coming Soon',
+                  style: TextStyle(color: muted, fontSize: 11),
                 ),
               ),
-              const Divider(color: Color(0xFF24354C), height: 1),
+
+              const Divider(
+                color: Color(0xFF24354C),
+                height: 1,
+              ),
+
               ListTile(
-                leading: const Icon(Icons.dark_mode_outlined, color: cyan),
+                leading: const Icon(
+                  Icons.dark_mode_outlined,
+                  color: cyan,
+                ),
                 title: const Text(
                   'Dark Mode',
                   style: TextStyle(color: Colors.white),
                 ),
+                subtitle: Text(
+                  isDarkMode ? 'Enabled' : 'Disabled',
+                  style: const TextStyle(color: muted),
+                ),
                 trailing: Switch(
-                  value: true,
-                  onChanged: (_) {},
+                  value: isDarkMode,
+                  onChanged: onDarkModeChanged,
                   activeColor: cyan,
                 ),
               ),
-              const Divider(color: Color(0xFF24354C), height: 1),
-              ListTile(
-                leading: const Icon(Icons.info_outline, color: cyan),
-                title: const Text(
+
+              const Divider(
+                color: Color(0xFF24354C),
+                height: 1,
+              ),
+
+              const ListTile(
+                leading: Icon(
+                  Icons.info_outline,
+                  color: cyan,
+                ),
+                title: Text(
                   'System Version',
                   style: TextStyle(color: Colors.white),
                 ),
-                trailing: const Text(
+                trailing: Text(
                   '1.0.0',
                   style: TextStyle(color: muted),
                 ),
