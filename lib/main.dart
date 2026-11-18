@@ -8,8 +8,11 @@ import 'timetable_page.dart';
 
 void main() {
   final player = PlayerSystem();
-  final questSystem = QuestSystem();
-  final studyTimer = StudyTimer();
+  final timetableSystem = TimetableSystem();
+  final questSystem = QuestSystem(
+    timetableSystem: timetableSystem,
+  );
+final studyTimer = StudyTimer();
   final timetableSystem = TimetableSystem();
 
   runApp(
