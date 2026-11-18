@@ -765,7 +765,7 @@ class QuestPage extends StatelessWidget {
                 ),
                 if (!completed)
                   TextButton(
-                    onPressed: () => questSystem.complete(quest.id),
+                    onPressed: () => questSystem.completeQuest(quest.id, player),
                     child: const Text(
                       'COMPLETE',
                       style: TextStyle(color: cyan, fontSize: 11),
