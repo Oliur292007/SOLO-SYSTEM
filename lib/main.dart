@@ -227,10 +227,14 @@ class _SystemHomeState extends State<SystemHome> {
   @override
   void initState() {
     super.initState();
-    widget.player.loadPlayer();
-    widget.questSystem.loadQuests();
-    widget.studyTimer.loadTimer();
-    widget.timetableSystem.loadTimetable(); // ✅ still works (now in scope)
+    _loadSystems();
+  }
+
+  Future<void> _loadSystems() async {
+    await widget.player.loadPlayer();
+    await widget.timetableSystem.loadTimetable();
+    await widget.questSystem.loadQuests();
+    await widget.studyTimer.loadTimer();
   }
 
   @override
@@ -343,7 +347,7 @@ class DashboardPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  'WELCOME BACK, PLAYER.',
+                  'WELCOME BACK, ${player.playerName.toUpperCase()}.',
                   style: TextStyle(
                     color: c.muted,
                     fontSize: 10,
