@@ -13,7 +13,7 @@ void main() {
     SoloSystemApp(
       player: player,
       questSystem: questSystem,
-      studyTimer: studyTimer,
+      studyTimer: widget.studyTimer,
     ),
   );
 }
@@ -101,7 +101,7 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
         questSystem: widget.questSystem,
         isDarkMode: isDarkMode,
         onDarkModeChanged: _changeTheme,
-        studyTimer: studyTimer,
+        studyTimer: widget.studyTimer,
       ),
     );
   }
@@ -156,9 +156,9 @@ class _SystemHomeState extends State<SystemHome> {
             questSystem: widget.questSystem,
           ),
           QuestPage(
-            player: player,
-            questSystem: questSystem,
-            studyTimer: studyTimer,
+            player: widget.player,
+            questSystem: widget.questSystem,
+            studyTimer: widget.studyTimer,
           ),
           StatusPage(player: widget.player),
           SettingsPage(
