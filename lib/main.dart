@@ -13,7 +13,7 @@ void main() {
     SoloSystemApp(
       player: player,
       questSystem: questSystem,
-      studyTimer: widget.studyTimer,
+      studyTimer: studyTimer,
     ),
   );
 }
