@@ -3,40 +3,127 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'player_system.dart';
 import 'quest_system.dart';
 import 'study_timer.dart';
+import 'timetable_system.dart';
+import 'timetable_page.dart';
 
 void main() {
   final player = PlayerSystem();
   final questSystem = QuestSystem();
   final studyTimer = StudyTimer();
+  final timetableSystem = TimetableSystem();
 
   runApp(
     SoloSystemApp(
       player: player,
       questSystem: questSystem,
       studyTimer: studyTimer,
+      timetableSystem: timetableSystem, // ✅ now passed
     ),
   );
 }
-const Color bg = Color(0xFF050B18);
-const Color panel = Color(0xFF0B1930);
-const Color blue = Color(0xFF00BFFF);
-const Color cyan = Color(0xFF00E5FF);
-const Color muted = Color(0xFF8295B3);
 
 // ============================================================
-// APP ROOT (now stateful for theme persistence)
+// THEME TOKENS (theme-aware — replaces hardcoded constants)
 // ============================================================
+
+@immutable
+class SystemColors extends ThemeExtension<SystemColors> {
+  final Color bg;
+  final Color panel;
+  final Color blue;
+  final Color cyan;
+  final Color muted;
+  final Color text;
+  final Color divider;
+  final Color barTrack;
+
+  const SystemColors({
+    required this.bg,
+    required this.panel,
+    required this.blue,
+    required this.cyan,
+    required this.muted,
+    required this.text,
+    required this.divider,
+    required this.barTrack,
+  });
+
+  static const dark = SystemColors(
+    bg: Color(0xFF050B18),
+    panel: Color(0xFF0B1930),
+    blue: Color(0xFF00BFFF),
+    cyan: Color(0xFF00E5FF),
+    muted: Color(0xFF8295B3),
+    text: Colors.white,
+    divider: Color(0xFF24354C),
+    barTrack: Color(0xFF24354C),
+  );
+
+  static const light = SystemColors(
+    bg: Color(0xFFF1F5FA),
+    panel: Colors.white,
+    blue: Color(0xFF0077B6),
+    cyan: Color(0xFF0096C7),
+    muted: Color(0xFF5A6B85),
+    text: Color(0xFF0B1930),
+    divider: Color(0xFFD6E0EC),
+    barTrack: Color(0xFFD6E0EC),
+  );
+
+  static SystemColors of(BuildContext context) =>
+      Theme.of(context).extension<SystemColors>() ?? dark;
+
+  @override
+  SystemColors copyWith({
+    Color? bg,
+    Color? panel,
+    Color? blue,
+    Color? cyan,
+    Color? muted,
+    Color? text,
+    Color? divider,
+    Color? barTrack,
+  }) {
+    return SystemColors(
+      bg: bg ?? this.bg,
+      panel: panel ?? this.panel,
+      blue: blue ?? this.blue,
+      cyan: cyan ?? this.cyan,
+      muted: muted ?? this.muted,
+      text: text ?? this.text,
+      divider: divider ?? this.divider,
+      barTrack: barTrack ?? this.barTrack,
+    );
+  }
+
+  @override
+  SystemColors lerp(ThemeExtension<SystemColors>? other, double t) {
+    if (other is! SystemColors) return this;
+    return SystemColors(
+      bg: Color.lerp(bg, other.bg, t)!,
+      panel: Color.lerp(panel, other.panel, t)!,
+      blue: Color.lerp(blue, other.blue, t)!,
+      cyan: Color.lerp(cyan, other.cyan, t)!,
+      muted: Color.lerp(muted, other.muted, t)!,
+      text: Color.lerp(text, other.text, t)!,
+      divider: Color.lerp(divider, other.divider, t)!,
+      barTrack: Color.lerp(barTrack, other.barTrack, t)!,
+    );
+  }
+}
 
 class SoloSystemApp extends StatefulWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
   final StudyTimer studyTimer;
+  final TimetableSystem timetableSystem; // ✅ added
 
   const SoloSystemApp({
     super.key,
     required this.player,
     required this.questSystem,
     required this.studyTimer,
+    required this.timetableSystem, // ✅ added
   });
 
   @override
@@ -77,22 +164,24 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
       title: 'SOLO SYSTEM',
       theme: ThemeData(
         brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFF1F5FA),
+        scaffoldBackgroundColor: SystemColors.light.bg,
         colorScheme: const ColorScheme.light(
-          primary: blue,
-          secondary: cyan,
+          primary: Color(0xFF0077B6),
+          secondary: Color(0xFF0096C7),
           surface: Colors.white,
         ),
+        extensions: const <ThemeExtension<dynamic>>[SystemColors.light],
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: bg,
+        scaffoldBackgroundColor: SystemColors.dark.bg,
         colorScheme: const ColorScheme.dark(
-          primary: blue,
-          secondary: cyan,
-          surface: panel,
+          primary: Color(0xFF00BFFF),
+          secondary: Color(0xFF00E5FF),
+          surface: Color(0xFF0B1930),
         ),
+        extensions: const <ThemeExtension<dynamic>>[SystemColors.dark],
         useMaterial3: true,
       ),
       themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
@@ -102,14 +191,11 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
         isDarkMode: isDarkMode,
         onDarkModeChanged: _changeTheme,
         studyTimer: widget.studyTimer,
+        timetableSystem: widget.timetableSystem, // ✅ now in scope
       ),
     );
   }
 }
-
-// ============================================================
-// HOME SHELL
-// ============================================================
 
 class SystemHome extends StatefulWidget {
   final PlayerSystem player;
@@ -117,6 +203,7 @@ class SystemHome extends StatefulWidget {
   final bool isDarkMode;
   final ValueChanged<bool> onDarkModeChanged;
   final StudyTimer studyTimer;
+  final TimetableSystem timetableSystem; // ✅ added
 
   const SystemHome({
     super.key,
@@ -125,6 +212,7 @@ class SystemHome extends StatefulWidget {
     required this.isDarkMode,
     required this.onDarkModeChanged,
     required this.studyTimer,
+    required this.timetableSystem, // ✅ added
   });
 
   @override
@@ -140,20 +228,25 @@ class _SystemHomeState extends State<SystemHome> {
     widget.player.loadPlayer();
     widget.questSystem.loadQuests();
     widget.studyTimer.loadTimer();
+    widget.timetableSystem.loadTimetable(); // ✅ still works (now in scope)
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = SystemColors.of(context);
+
     return AnimatedBuilder(
       animation: Listenable.merge([
         widget.player,
         widget.questSystem,
+        widget.studyTimer, // ✅ added — timer state refreshes UI
       ]),
       builder: (context, child) {
         final pages = [
           DashboardPage(
             player: widget.player,
             questSystem: widget.questSystem,
+            timetableSystem: widget.timetableSystem, 
           ),
           QuestPage(
             player: widget.player,
@@ -170,38 +263,38 @@ class _SystemHomeState extends State<SystemHome> {
 
         return Scaffold(
           body: SafeArea(
-            child: widget.player.isLoaded && widget.questSystem.isLoaded
+            child: widget.player.isLoaded && widget.questSystem.isLoaded && widget.timetableSystem.isLoaded
                 ? pages[selectedIndex]
-                : const Center(
-                    child: CircularProgressIndicator(color: cyan),
+                : Center(
+                    child: CircularProgressIndicator(color: c.cyan),
                   ),
           ),
           bottomNavigationBar: NavigationBar(
-            backgroundColor: panel,
-            indicatorColor: blue.withValues(alpha: 0.18),
+            backgroundColor: c.panel,            // ✅ theme-aware
+            indicatorColor: c.blue.withValues(alpha: 0.18),
             selectedIndex: selectedIndex,
             onDestinationSelected: (index) {
               setState(() => selectedIndex = index);
             },
-            destinations: const [
+            destinations: [
               NavigationDestination(
-                icon: Icon(Icons.dashboard_outlined),
-                selectedIcon: Icon(Icons.dashboard, color: cyan),
+                icon: Icon(Icons.dashboard_outlined, color: c.muted),
+                selectedIcon: Icon(Icons.dashboard, color: c.cyan),
                 label: 'Home',
               ),
               NavigationDestination(
-                icon: Icon(Icons.assignment_outlined),
-                selectedIcon: Icon(Icons.assignment, color: cyan),
+                icon: Icon(Icons.assignment_outlined, color: c.muted),
+                selectedIcon: Icon(Icons.assignment, color: c.cyan),
                 label: 'Quests',
               ),
               NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person, color: cyan),
+                icon: Icon(Icons.person_outline, color: c.muted),
+                selectedIcon: Icon(Icons.person, color: c.cyan),
                 label: 'Status',
               ),
               NavigationDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings, color: cyan),
+                icon: Icon(Icons.settings_outlined, color: c.muted),
+                selectedIcon: Icon(Icons.settings, color: c.cyan),
                 label: 'Settings',
               ),
             ],
@@ -212,45 +305,45 @@ class _SystemHomeState extends State<SystemHome> {
   }
 }
 
-// ============================================================
-// DASHBOARD
-// ============================================================
-
 class DashboardPage extends StatelessWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
+  final TimetableSystem timetableSystem; 
 
   const DashboardPage({
     super.key,
     required this.player,
     required this.questSystem,
+    required this.timetableSystem,
   });
 
   @override
   Widget build(BuildContext context) {
+    final c = SystemColors.of(context);
+
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'SOLO SYSTEM',
                   style: TextStyle(
-                    color: cyan,
+                    color: c.cyan,
                     fontSize: 21,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 3,
                   ),
                 ),
-                SizedBox(height: 5),
+                const SizedBox(height: 5),
                 Text(
                   'WELCOME BACK, PLAYER.',
                   style: TextStyle(
-                    color: muted,
+                    color: c.muted,
                     fontSize: 10,
                     letterSpacing: 2,
                   ),
@@ -260,13 +353,13 @@ class DashboardPage extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(11),
               decoration: BoxDecoration(
-                color: panel,
+                color: c.panel,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: blue.withValues(alpha: 0.4)),
+                border: Border.all(color: c.blue.withValues(alpha: 0.4)),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.notifications_active_outlined,
-                color: cyan,
+                color: c.cyan,
               ),
             ),
           ],
@@ -278,19 +371,16 @@ class DashboardPage extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [
-                Color(0xFF102B50),
-                Color(0xFF091426),
-              ],
+            gradient: LinearGradient(
+              colors: Theme.of(context).brightness == Brightness.dark
+                  ? const [Color(0xFF102B50), Color(0xFF091426)]
+                  : const [Color(0xFFE8F4FB), Color(0xFFF7FBFF)],
             ),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: blue.withValues(alpha: 0.5),
-            ),
+            border: Border.all(color: c.blue.withValues(alpha: 0.5)),
             boxShadow: [
               BoxShadow(
-                color: blue.withValues(alpha: 0.08),
+                color: c.blue.withValues(alpha: 0.08),
                 blurRadius: 20,
               ),
             ],
@@ -304,24 +394,20 @@ class DashboardPage extends StatelessWidget {
                     padding: const EdgeInsets.all(13),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: blue.withValues(alpha: 0.15),
-                      border: Border.all(color: cyan),
+                      color: c.blue.withValues(alpha: 0.15),
+                      border: Border.all(color: c.cyan),
                     ),
-                    child: const Icon(
-                      Icons.person,
-                      color: cyan,
-                      size: 30,
-                    ),
+                    child: Icon(Icons.person, color: c.cyan, size: 30),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'PLAYER',
                           style: TextStyle(
-                            color: muted,
+                            color: c.muted,
                             fontSize: 10,
                             letterSpacing: 2,
                           ),
@@ -329,8 +415,8 @@ class DashboardPage extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           player.playerName.toUpperCase(),
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: c.text,
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
                           ),
@@ -338,8 +424,8 @@ class DashboardPage extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           '${player.rank} • ${player.title}',
-                          style: const TextStyle(
-                            color: cyan,
+                          style: TextStyle(
+                            color: c.cyan,
                             fontSize: 10,
                             letterSpacing: 1,
                           ),
@@ -349,8 +435,8 @@ class DashboardPage extends StatelessWidget {
                   ),
                   Text(
                     'LV. ${player.level.toString().padLeft(2, '0')}',
-                    style: const TextStyle(
-                      color: cyan,
+                    style: TextStyle(
+                      color: c.cyan,
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
@@ -363,13 +449,13 @@ class DashboardPage extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'EXPERIENCE POINTS',
-                    style: TextStyle(color: muted, fontSize: 10),
+                    style: TextStyle(color: c.muted, fontSize: 10),
                   ),
                   Text(
                     '${player.xp} / ${player.xpRequired} XP',
-                    style: const TextStyle(color: cyan, fontSize: 11),
+                    style: TextStyle(color: c.cyan, fontSize: 11),
                   ),
                 ],
               ),
@@ -381,8 +467,8 @@ class DashboardPage extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: player.xpProgress.clamp(0.0, 1.0),
                   minHeight: 9,
-                  backgroundColor: const Color(0xFF24354C),
-                  color: cyan,
+                  backgroundColor: c.barTrack,
+                  color: c.cyan,
                 ),
               ),
 
@@ -390,7 +476,7 @@ class DashboardPage extends StatelessWidget {
 
               Text(
                 '${(player.xpRequired - player.xp).clamp(0, 999999)} XP REQUIRED FOR NEXT LEVEL',
-                style: const TextStyle(color: muted, fontSize: 9),
+                style: TextStyle(color: c.muted, fontSize: 9),
               ),
             ],
           ),
@@ -418,13 +504,112 @@ class DashboardPage extends StatelessWidget {
                 title: 'MP',
                 value: '85 / 100',
                 icon: Icons.bolt,
-                color: cyan,
+                color: Color(0xFF00E5FF),
               ),
             ),
           ],
         ),
 
         const SizedBox(height: 24),
+
+        
+        AnimatedBuilder(
+          animation: timetableSystem,
+          builder: (context, child) {
+            final todaySchedules = timetableSystem.getSchedulesForDay(
+              DateTime.now().weekday,
+            );
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 18),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: c.panel,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: c.divider),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "TODAY'S SCHEDULE",
+                        style: TextStyle(
+                          color: c.cyan,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      Text(
+                        "${todaySchedules.length} Tasks",
+                        style: TextStyle(
+                          color: c.cyan,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  if (todaySchedules.isEmpty)
+                    Text(
+                      "No study schedule for today.",
+                      style: TextStyle(color: c.muted),
+                    )
+                  else
+                    ...todaySchedules.take(3).map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.schedule,
+                              size: 17,
+                              color: c.cyan,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                item.subject,
+                                style: TextStyle(color: c.text),
+                              ),
+                            ),
+                            Text(
+                              item.startTime,
+                              style: TextStyle(color: c.muted),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  const SizedBox(height: 10),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => TimetablePage(
+                              timetableSystem: timetableSystem,
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Text("OPEN TIMETABLE"),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+
 
         const SectionTitle(title: 'DAILY QUEST'),
 
@@ -433,23 +618,21 @@ class DashboardPage extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: panel,
+            color: c.panel,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: blue.withValues(alpha: 0.35),
-            ),
+            border: Border.all(color: c.blue.withValues(alpha: 0.35)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.assignment, color: cyan),
-                  SizedBox(width: 10),
+                  Icon(Icons.assignment, color: c.cyan),
+                  const SizedBox(width: 10),
                   Text(
                     "TODAY'S OBJECTIVES",
                     style: TextStyle(
-                      color: cyan,
+                      color: c.cyan,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1,
                     ),
@@ -460,13 +643,13 @@ class DashboardPage extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Quest Completion',
-                    style: TextStyle(color: muted, fontSize: 12),
+                    style: TextStyle(color: c.muted, fontSize: 12),
                   ),
                   Text(
                     '${questSystem.completedCount} / ${questSystem.totalCount}',
-                    style: const TextStyle(color: cyan, fontSize: 12),
+                    style: TextStyle(color: c.cyan, fontSize: 12),
                   ),
                 ],
               ),
@@ -476,8 +659,8 @@ class DashboardPage extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: questSystem.progress.clamp(0.0, 1.0),
                   minHeight: 7,
-                  backgroundColor: const Color(0xFF24354C),
-                  color: blue,
+                  backgroundColor: c.barTrack,
+                  color: c.blue,
                 ),
               ),
               const SizedBox(height: 15),
@@ -525,19 +708,19 @@ class DashboardPage extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF10233D),
+            color: c.panel,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: cyan.withValues(alpha: 0.3)),
+            border: Border.all(color: c.cyan.withValues(alpha: 0.3)),
           ),
-          child: const Row(
+          child: Row(
             children: [
-              Icon(Icons.info_outline, color: cyan),
-              SizedBox(width: 12),
+              Icon(Icons.info_outline, color: c.cyan),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'SYSTEM MESSAGE: Your journey to become stronger starts today.',
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: c.text.withValues(alpha: 0.85),
                     fontSize: 11,
                     height: 1.5,
                   ),
@@ -548,11 +731,11 @@ class DashboardPage extends StatelessWidget {
         ),
 
         const SizedBox(height: 20),
-        const Center(
+        Center(
           child: Text(
             'SYSTEM VERSION 1.0.0',
             style: TextStyle(
-              color: muted,
+              color: c.muted,
               fontSize: 9,
               letterSpacing: 2,
             ),
@@ -563,10 +746,6 @@ class DashboardPage extends StatelessWidget {
   }
 }
 
-// ============================================================
-// REUSABLE WIDGETS
-// ============================================================
-
 class SectionTitle extends StatelessWidget {
   final String title;
 
@@ -576,8 +755,8 @@ class SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       title,
-      style: const TextStyle(
-        color: cyan,
+      style: TextStyle(
+        color: SystemColors.of(context).cyan,
         fontWeight: FontWeight.bold,
         fontSize: 13,
         letterSpacing: 2,
@@ -602,10 +781,12 @@ class VitalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = SystemColors.of(context);
+
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: panel,
+        color: c.panel,
         borderRadius: BorderRadius.circular(13),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
@@ -622,8 +803,8 @@ class VitalCard extends StatelessWidget {
           const SizedBox(height: 13),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: c.text,
               fontWeight: FontWeight.bold,
               fontSize: 17,
             ),
@@ -648,13 +829,15 @@ class QuestRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = SystemColors.of(context);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         children: [
           Icon(
             completed ? Icons.check_circle : Icons.circle_outlined,
-            color: completed ? Colors.greenAccent : muted,
+            color: completed ? Colors.green : c.muted,
             size: 19,
           ),
           const SizedBox(width: 10),
@@ -662,14 +845,14 @@ class QuestRow extends StatelessWidget {
             child: Text(
               name,
               style: TextStyle(
-                color: completed ? muted : Colors.white,
+                color: completed ? c.muted : c.text,
                 decoration: completed ? TextDecoration.lineThrough : null,
               ),
             ),
           ),
           Text(
             duration,
-            style: const TextStyle(color: muted, fontSize: 11),
+            style: TextStyle(color: c.muted, fontSize: 11),
           ),
         ],
       ),
@@ -693,39 +876,36 @@ class InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = SystemColors.of(context);
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: panel,
+        color: c.panel,
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: blue.withValues(alpha: 0.3)),
+        border: Border.all(color: c.blue.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: cyan, size: 20),
+          Icon(icon, color: c.cyan, size: 20),
           const SizedBox(height: 12),
-          Text(title, style: const TextStyle(color: muted, fontSize: 9)),
+          Text(title, style: TextStyle(color: c.muted, fontSize: 9)),
           const SizedBox(height: 7),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: c.text,
               fontSize: 22,
               fontWeight: FontWeight.bold,
             ),
           ),
-          Text(unit, style: const TextStyle(color: muted, fontSize: 9)),
+          Text(unit, style: TextStyle(color: c.muted, fontSize: 9)),
         ],
       ),
     );
   }
 }
-
-// ============================================================
-// QUEST PAGE
-// ============================================================
-
 
 class QuestPage extends StatelessWidget {
   final PlayerSystem player;
@@ -741,6 +921,8 @@ class QuestPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = SystemColors.of(context);
+
     return AnimatedBuilder(
       animation: Listenable.merge([questSystem, studyTimer]),
       builder: (context, child) {
@@ -749,10 +931,10 @@ class QuestPage extends StatelessWidget {
         return ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            const Text(
+            Text(
               'STUDY QUESTS',
               style: TextStyle(
-                color: cyan,
+                color: c.cyan,
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 2,
@@ -761,7 +943,7 @@ class QuestPage extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Completed: ${questSystem.completedCount}/${questSystem.totalCount}',
-              style: const TextStyle(color: muted),
+              style: TextStyle(color: c.muted),
             ),
             const SizedBox(height: 20),
 
@@ -770,25 +952,25 @@ class QuestPage extends StatelessWidget {
                 padding: const EdgeInsets.all(18),
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
-                  color: panel,
+                  color: c.panel,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: cyan),
+                  border: Border.all(color: c.cyan),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'ACTIVE STUDY SESSION',
                       style: TextStyle(
-                        color: cyan,
+                        color: c.cyan,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 12),
                     Text(
                       studyTimer.formattedTime,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: c.text,
                         fontSize: 42,
                         fontWeight: FontWeight.bold,
                       ),
@@ -796,14 +978,14 @@ class QuestPage extends StatelessWidget {
                     const SizedBox(height: 12),
 
                     if (studyTimer.isFinished)
-                      const Text(
+                      Text(
                         'Timer completed! Claim your XP.',
-                        style: TextStyle(color: cyan),
+                        style: TextStyle(color: c.cyan),
                       )
                     else
                       Text(
                         studyTimer.isRunning ? 'Timer Running' : 'Timer Paused',
-                        style: const TextStyle(color: muted),
+                        style: TextStyle(color: c.muted),
                       ),
 
                     const SizedBox(height: 14),
@@ -858,13 +1040,16 @@ class QuestPage extends StatelessWidget {
               final anotherActive = activeId != null && !isActive;
 
               return Container(
+                key: ValueKey(quest.id),
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: panel,
+                  color: c.panel,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: isActive ? cyan : Colors.white12,
+                    color: isActive
+                        ? c.cyan
+                        : c.text.withValues(alpha: 0.10),
                   ),
                 ),
                 child: Column(
@@ -872,8 +1057,8 @@ class QuestPage extends StatelessWidget {
                   children: [
                     Text(
                       quest.name,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: c.text,
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
                       ),
@@ -881,22 +1066,22 @@ class QuestPage extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       '${quest.durationMinutes} minutes • ${quest.xpReward} XP',
-                      style: const TextStyle(color: muted),
+                      style: TextStyle(color: c.muted),
                     ),
                     const SizedBox(height: 12),
 
                     if (completed)
-                      const Text(
+                      Text(
                         'COMPLETED',
                         style: TextStyle(
-                          color: cyan,
+                          color: c.cyan,
                           fontWeight: FontWeight.bold,
                         ),
                       )
                     else if (isActive)
-                      const Text(
+                      Text(
                         'ACTIVE SESSION',
-                        style: TextStyle(color: cyan),
+                        style: TextStyle(color: c.cyan),
                       )
                     else
                       ElevatedButton(
@@ -919,10 +1104,6 @@ class QuestPage extends StatelessWidget {
   }
 }
 
-// ============================================================
-// STATUS PAGE
-// ============================================================
-
 class StatusPage extends StatelessWidget {
   final PlayerSystem player;
 
@@ -930,6 +1111,8 @@ class StatusPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = SystemColors.of(context);
+
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -939,17 +1122,17 @@ class StatusPage extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: panel,
+            color: c.panel,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: blue.withValues(alpha: 0.35)),
+            border: Border.all(color: c.blue.withValues(alpha: 0.35)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 player.playerName.toUpperCase(),
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: c.text,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
@@ -957,13 +1140,16 @@ class StatusPage extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 '${player.rank} • ${player.title}',
-                style: const TextStyle(color: cyan, fontSize: 11),
+                style: TextStyle(color: c.cyan, fontSize: 11),
               ),
               const SizedBox(height: 16),
-              _statusRow('LEVEL', '${player.level}'),
-              _statusRow('XP', '${player.xp} / ${player.xpRequired}'),
-              _statusRow('XP PROGRESS',
-                  '${(player.xpProgress * 100).toStringAsFixed(0)}%'),
+              _statusRow(context, 'LEVEL', '${player.level}'),
+              _statusRow(context, 'XP', '${player.xp} / ${player.xpRequired}'),
+              _statusRow(
+                context,
+                'XP PROGRESS',
+                '${(player.xpProgress * 100).toStringAsFixed(0)}%',
+              ),
             ],
           ),
         ),
@@ -1000,24 +1186,20 @@ class StatusPage extends StatelessWidget {
     );
   }
 
-  Widget _statusRow(String label, String value) {
+  Widget _statusRow(BuildContext context, String label, String value) {
+    final c = SystemColors.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: muted, fontSize: 11)),
-          Text(value,
-              style: const TextStyle(color: Colors.white, fontSize: 12)),
+          Text(label, style: TextStyle(color: c.muted, fontSize: 11)),
+          Text(value, style: TextStyle(color: c.text, fontSize: 12)),
         ],
       ),
     );
   }
 }
-
-// ============================================================
-// SETTINGS PAGE (fully rewritten)
-// ============================================================
 
 class SettingsPage extends StatelessWidget {
   final PlayerSystem player;
@@ -1032,56 +1214,43 @@ class SettingsPage extends StatelessWidget {
   });
 
   Future<void> _editPlayerName(BuildContext context) async {
-    final controller = TextEditingController(
-      text: player.playerName,
-    );
+    final c = SystemColors.of(context);
+    final controller = TextEditingController(text: player.playerName);
 
     final newName = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: panel,
-          title: const Text(
+          backgroundColor: c.panel,
+          title: Text(
             'CHANGE PLAYER NAME',
-            style: TextStyle(color: cyan, fontSize: 16),
+            style: TextStyle(color: c.cyan, fontSize: 16),
           ),
           content: TextField(
             controller: controller,
             autofocus: true,
             maxLength: 25,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
+            style: TextStyle(color: c.text),
+            decoration: InputDecoration(
               hintText: 'Enter your player name',
-              hintStyle: TextStyle(color: muted),
+              hintStyle: TextStyle(color: c.muted),
               enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: blue),
+                borderSide: BorderSide(color: c.blue),
               ),
               focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: cyan),
+                borderSide: BorderSide(color: c.cyan),
               ),
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-              },
-              child: const Text(
-                'CANCEL',
-                style: TextStyle(color: muted),
-              ),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text('CANCEL', style: TextStyle(color: c.muted)),
             ),
             TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  controller.text.trim(),
-                );
-              },
-              child: const Text(
-                'SAVE',
-                style: TextStyle(color: cyan),
-              ),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text.trim()),
+              child: Text('SAVE', style: TextStyle(color: c.cyan)),
             ),
           ],
         );
@@ -1097,14 +1266,14 @@ class SettingsPage extends StatelessWidget {
     if (!context.mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Player name updated successfully!'),
-      ),
+      const SnackBar(content: Text('Player name updated successfully!')),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = SystemColors.of(context);
+
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -1113,97 +1282,56 @@ class SettingsPage extends StatelessWidget {
 
         Container(
           decoration: BoxDecoration(
-            color: panel,
+            color: c.panel,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: blue.withValues(alpha: 0.35),
-            ),
+            border: Border.all(color: c.blue.withValues(alpha: 0.35)),
           ),
           child: Column(
             children: [
               ListTile(
-                leading: const Icon(
-                  Icons.person_outline,
-                  color: cyan,
-                ),
-                title: const Text(
-                  'Player Name',
-                  style: TextStyle(color: Colors.white),
-                ),
+                leading: Icon(Icons.person_outline, color: c.cyan),
+                title: Text('Player Name', style: TextStyle(color: c.text)),
                 subtitle: Text(
                   player.playerName,
-                  style: const TextStyle(color: muted),
+                  style: TextStyle(color: c.muted),
                 ),
-                trailing: const Icon(
-                  Icons.edit,
-                  color: cyan,
-                ),
+                trailing: Icon(Icons.edit, color: c.cyan),
                 onTap: () => _editPlayerName(context),
               ),
 
-              const Divider(
-                color: Color(0xFF24354C),
-                height: 1,
-              ),
+              Divider(color: c.divider, height: 1),
 
               ListTile(
-                leading: const Icon(
-                  Icons.notifications_outlined,
-                  color: cyan,
-                ),
-                title: const Text(
-                  'Notifications',
-                  style: TextStyle(color: Colors.white),
-                ),
-                trailing: const Text(
+                leading: Icon(Icons.notifications_outlined, color: c.cyan),
+                title: Text('Notifications', style: TextStyle(color: c.text)),
+                trailing: Text(
                   'Coming Soon',
-                  style: TextStyle(color: muted, fontSize: 11),
+                  style: TextStyle(color: c.muted, fontSize: 11),
                 ),
               ),
 
-              const Divider(
-                color: Color(0xFF24354C),
-                height: 1,
-              ),
+              Divider(color: c.divider, height: 1),
 
               ListTile(
-                leading: const Icon(
-                  Icons.dark_mode_outlined,
-                  color: cyan,
-                ),
-                title: const Text(
-                  'Dark Mode',
-                  style: TextStyle(color: Colors.white),
-                ),
+                leading: Icon(Icons.dark_mode_outlined, color: c.cyan),
+                title: Text('Dark Mode', style: TextStyle(color: c.text)),
                 subtitle: Text(
                   isDarkMode ? 'Enabled' : 'Disabled',
-                  style: const TextStyle(color: muted),
+                  style: TextStyle(color: c.muted),
                 ),
                 trailing: Switch(
                   value: isDarkMode,
                   onChanged: onDarkModeChanged,
-                  activeColor: cyan,
+                  activeThumbColor: c.cyan,   // ✅ fixed deprecation
                 ),
               ),
 
-              const Divider(
-                color: Color(0xFF24354C),
-                height: 1,
-              ),
+              Divider(color: c.divider, height: 1),
 
-              const ListTile(
-                leading: Icon(
-                  Icons.info_outline,
-                  color: cyan,
-                ),
-                title: Text(
-                  'System Version',
-                  style: TextStyle(color: Colors.white),
-                ),
-                trailing: Text(
-                  '1.0.0',
-                  style: TextStyle(color: muted),
-                ),
+              ListTile(
+                leading: Icon(Icons.info_outline, color: c.cyan),
+                title: Text('System Version', style: TextStyle(color: c.text)),
+                trailing: Text('1.0.0', style: TextStyle(color: c.muted)),
               ),
             ],
           ),
@@ -1214,3 +1342,4 @@ class SettingsPage extends StatelessWidget {
     );
   }
 }
+
