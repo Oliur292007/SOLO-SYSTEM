@@ -2,19 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'player_system.dart';
 import 'quest_system.dart';
+import 'study_timer.dart';
 
 void main() {
   final player = PlayerSystem();
   final questSystem = QuestSystem();
+  final studyTimer = StudyTimer();
 
   runApp(
     SoloSystemApp(
       player: player,
       questSystem: questSystem,
+      studyTimer: studyTimer,
     ),
   );
 }
-
 const Color bg = Color(0xFF050B18);
 const Color panel = Color(0xFF0B1930);
 const Color blue = Color(0xFF00BFFF);
@@ -28,11 +30,13 @@ const Color muted = Color(0xFF8295B3);
 class SoloSystemApp extends StatefulWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
+  final StudyTimer studyTimer;
 
   const SoloSystemApp({
     super.key,
     required this.player,
     required this.questSystem,
+    required this.studyTimer,
   });
 
   @override
@@ -97,6 +101,7 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
         questSystem: widget.questSystem,
         isDarkMode: isDarkMode,
         onDarkModeChanged: _changeTheme,
+        studyTimer: studyTimer,
       ),
     );
   }
@@ -111,6 +116,7 @@ class SystemHome extends StatefulWidget {
   final QuestSystem questSystem;
   final bool isDarkMode;
   final ValueChanged<bool> onDarkModeChanged;
+  final StudyTimer studyTimer;
 
   const SystemHome({
     super.key,
@@ -118,6 +124,7 @@ class SystemHome extends StatefulWidget {
     required this.questSystem,
     required this.isDarkMode,
     required this.onDarkModeChanged,
+    required this.studyTimer,
   });
 
   @override
@@ -132,6 +139,7 @@ class _SystemHomeState extends State<SystemHome> {
     super.initState();
     widget.player.loadPlayer();
     widget.questSystem.loadQuests();
+    widget.studyTimer.loadTimer();
   }
 
   @override
@@ -148,8 +156,9 @@ class _SystemHomeState extends State<SystemHome> {
             questSystem: widget.questSystem,
           ),
           QuestPage(
-            player: widget.player,
-            questSystem: widget.questSystem,
+            player: player,
+            questSystem: questSystem,
+            studyTimer: studyTimer,
           ),
           StatusPage(player: widget.player),
           SettingsPage(
@@ -717,122 +726,195 @@ class InfoCard extends StatelessWidget {
 // QUEST PAGE
 // ============================================================
 
+
 class QuestPage extends StatelessWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
+  final StudyTimer studyTimer;
 
   const QuestPage({
     super.key,
     required this.player,
     required this.questSystem,
+    required this.studyTimer,
   });
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        const SectionTitle(title: 'QUEST CENTER'),
-        const SizedBox(height: 8),
-        const Text(
-          'COMPLETE MISSIONS. EARN EXPERIENCE.',
-          style: TextStyle(color: muted, fontSize: 10),
-        ),
-        const SizedBox(height: 20),
+    return AnimatedBuilder(
+      animation: Listenable.merge([questSystem, studyTimer]),
+      builder: (context, child) {
+        final activeId = studyTimer.activeQuestId;
 
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: panel,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: blue.withValues(alpha: 0.4)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'DAILY PROGRESS',
-                style: TextStyle(color: cyan, letterSpacing: 1),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '${questSystem.completedCount} / ${questSystem.totalCount} QUESTS COMPLETED',
-                style: const TextStyle(color: Colors.white),
-              ),
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  value: questSystem.progress.clamp(0.0, 1.0),
-                  minHeight: 8,
-                  backgroundColor: const Color(0xFF24354C),
-                  color: cyan,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 22),
-
-        ...questSystem.quests.map((quest) {
-          final completed = questSystem.isCompleted(quest.id);
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: panel,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: completed
-                    ? Colors.greenAccent.withValues(alpha: 0.5)
-                    : blue.withValues(alpha: 0.35),
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            const Text(
+              'STUDY QUESTS',
+              style: TextStyle(
+                color: cyan,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
               ),
             ),
-            child: Row(
-              children: [
-                Icon(
-                  completed ? Icons.check_circle : Icons.circle_outlined,
-                  color: completed ? Colors.greenAccent : muted,
+            const SizedBox(height: 8),
+            Text(
+              'Completed: ${questSystem.completedCount}/${questSystem.totalCount}',
+              style: const TextStyle(color: muted),
+            ),
+            const SizedBox(height: 20),
+
+            if (activeId != null)
+              Container(
+                padding: const EdgeInsets.all(18),
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: panel,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: cyan),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        quest.name,
-                        style: TextStyle(
-                          color: completed ? muted : Colors.white,
-                          fontWeight: FontWeight.w600,
-                          decoration:
-                              completed ? TextDecoration.lineThrough : null,
-                        ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'ACTIVE STUDY SESSION',
+                      style: TextStyle(
+                        color: cyan,
+                        fontWeight: FontWeight.bold,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${quest.durationMinutes} MIN',
-                        style: const TextStyle(color: muted, fontSize: 10),
-                      ),
-                    ],
-                  ),
-                ),
-                if (!completed)
-                  TextButton(
-                    onPressed: () => questSystem.completeQuest(quest.id, player),
-                    child: const Text(
-                      'COMPLETE',
-                      style: TextStyle(color: cyan, fontSize: 11),
                     ),
-                  ),
-              ],
-            ),
-          );
-        }),
+                    const SizedBox(height: 12),
+                    Text(
+                      studyTimer.formattedTime,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 42,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
 
-        const SizedBox(height: 20),
-      ],
+                    if (studyTimer.isFinished)
+                      const Text(
+                        'Timer completed! Claim your XP.',
+                        style: TextStyle(color: cyan),
+                      )
+                    else
+                      Text(
+                        studyTimer.isRunning ? 'Timer Running' : 'Timer Paused',
+                        style: const TextStyle(color: muted),
+                      ),
+
+                    const SizedBox(height: 14),
+
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (studyTimer.isRunning)
+                          ElevatedButton(
+                            onPressed: () => studyTimer.pause(),
+                            child: const Text('Pause'),
+                          )
+                        else if (!studyTimer.isFinished)
+                          ElevatedButton(
+                            onPressed: () => studyTimer.resume(),
+                            child: const Text('Resume'),
+                          ),
+
+                        if (studyTimer.isFinished)
+                          ElevatedButton(
+                            onPressed: () async {
+                              final xp = await studyTimer.completeQuest(
+                                questSystem,
+                                player,
+                              );
+
+                              if (context.mounted && xp != null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Quest completed! +$xp XP'),
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Text('Claim XP'),
+                          ),
+
+                        OutlinedButton(
+                          onPressed: () => studyTimer.cancel(),
+                          child: const Text('Cancel'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+            ...questSystem.quests.map((quest) {
+              final completed = questSystem.isCompleted(quest.id);
+              final isActive = activeId == quest.id;
+              final anotherActive = activeId != null && !isActive;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: panel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isActive ? cyan : Colors.white12,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      quest.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${quest.durationMinutes} minutes • ${quest.xpReward} XP',
+                      style: const TextStyle(color: muted),
+                    ),
+                    const SizedBox(height: 12),
+
+                    if (completed)
+                      const Text(
+                        'COMPLETED',
+                        style: TextStyle(
+                          color: cyan,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    else if (isActive)
+                      const Text(
+                        'ACTIVE SESSION',
+                        style: TextStyle(color: cyan),
+                      )
+                    else
+                      ElevatedButton(
+                        onPressed: anotherActive
+                            ? null
+                            : () => studyTimer.start(
+                                  questId: quest.id,
+                                  durationMinutes: quest.durationMinutes,
+                                ),
+                        child: const Text('Start Study'),
+                      ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        );
+      },
     );
   }
 }
