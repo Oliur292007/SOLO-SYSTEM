@@ -909,6 +909,7 @@ class InfoCard extends StatelessWidget {
   }
 }
 
+
 class QuestPage extends StatelessWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
@@ -942,13 +943,17 @@ class QuestPage extends StatelessWidget {
                 letterSpacing: 2,
               ),
             ),
+
             const SizedBox(height: 8),
+
             Text(
               'Completed: ${questSystem.completedCount}/${questSystem.totalCount}',
               style: TextStyle(color: c.muted),
             ),
+
             const SizedBox(height: 20),
 
+            // ACTIVE STUDY SESSION
             if (activeId != null)
               Container(
                 padding: const EdgeInsets.all(18),
@@ -968,7 +973,9 @@ class QuestPage extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+
                     const SizedBox(height: 12),
+
                     Text(
                       studyTimer.formattedTime,
                       style: TextStyle(
@@ -977,6 +984,7 @@ class QuestPage extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+
                     const SizedBox(height: 12),
 
                     if (studyTimer.isFinished)
@@ -986,7 +994,9 @@ class QuestPage extends StatelessWidget {
                       )
                     else
                       Text(
-                        studyTimer.isRunning ? 'Timer Running' : 'Timer Paused',
+                        studyTimer.isRunning
+                            ? 'Timer Running'
+                            : 'Timer Paused',
                         style: TextStyle(color: c.muted),
                       ),
 
@@ -1018,7 +1028,9 @@ class QuestPage extends StatelessWidget {
                               if (context.mounted && xp != null) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text('Quest completed! +$xp XP'),
+                                    content: Text(
+                                      'Quest completed! +$xp XP',
+                                    ),
                                   ),
                                 );
                               }
@@ -1036,10 +1048,14 @@ class QuestPage extends StatelessWidget {
                 ),
               ),
 
+            // DAILY MISSIONS
             ...questSystem.quests.map((quest) {
               final completed = questSystem.isCompleted(quest.id);
               final isActive = activeId == quest.id;
               final anotherActive = activeId != null && !isActive;
+
+              final isFixedMission = !quest.requiresTimer;
+              final isOverdue = quest.isOverdue && !completed;
 
               return Container(
                 key: ValueKey(quest.id),
@@ -1057,19 +1073,44 @@ class QuestPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      quest.name,
-                      style: TextStyle(
-                        color: c.text,
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            quest.name,
+                            style: TextStyle(
+                              color: c.text,
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+
+                        if (quest.isOptional)
+                          Text(
+                            'OPTIONAL',
+                            style: TextStyle(
+                              color: c.cyan,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                      ],
                     ),
+
                     const SizedBox(height: 6),
-                    Text(
-                      '${quest.durationMinutes} minutes • ${quest.xpReward} XP',
-                      style: TextStyle(color: c.muted),
-                    ),
+
+                    if (!isFixedMission)
+                      Text(
+                        '${quest.durationMinutes} minutes • ${quest.xpReward} XP',
+                        style: TextStyle(color: c.muted),
+                      )
+                    else
+                      Text(
+                        quest.subject,
+                        style: TextStyle(color: c.muted),
+                      ),
+
                     const SizedBox(height: 12),
 
                     if (completed)
@@ -1080,11 +1121,45 @@ class QuestPage extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       )
+
+                    else if (isOverdue)
+                      Text(
+                        'MISSION FAILED',
+                        style: TextStyle(
+                          color: Colors.redAccent,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+
                     else if (isActive)
                       Text(
                         'ACTIVE SESSION',
                         style: TextStyle(color: c.cyan),
                       )
+
+                    // FIXED MISSIONS: COMPLETE BUTTON ONLY
+                    else if (isFixedMission)
+                      ElevatedButton(
+                        onPressed: () async {
+                          final xp = await questSystem.completeFixedMission(
+                            quest.id,
+                            player,
+                          );
+
+                          if (context.mounted && xp != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '${quest.name} completed! +$xp XP',
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('Complete'),
+                      )
+
+                    // TIMETABLE MISSIONS: START STUDY BUTTON ONLY
                     else
                       ElevatedButton(
                         onPressed: anotherActive
@@ -1105,6 +1180,7 @@ class QuestPage extends StatelessWidget {
     );
   }
 }
+
 
 class StatusPage extends StatelessWidget {
   final PlayerSystem player;
