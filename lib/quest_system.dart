@@ -343,7 +343,10 @@ class QuestSystem extends ChangeNotifier {
     if (quest == null) return null;
     if (!quest.requiresTimer) return null;
     if (isCompleted(questId)) return null;
-    if (!quest.isAvailable) return null;
+    if (quest.availableFrom != null &&
+        DateTime.now().isBefore(quest.availableFrom!)) {
+      return null;
+    }
 
     return _completeMission(quest, player);
   }
