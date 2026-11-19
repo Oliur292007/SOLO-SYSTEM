@@ -252,7 +252,7 @@ class _SystemHomeState extends State<SystemHome> {
           DashboardPage(
             player: widget.player,
             questSystem: widget.questSystem,
-            timetableSystem: widget.timetableSystem, 
+            timetableSystem: widget.timetableSystem,
           ),
           QuestPage(
             player: widget.player,
@@ -314,7 +314,7 @@ class _SystemHomeState extends State<SystemHome> {
 class DashboardPage extends StatelessWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
-  final TimetableSystem timetableSystem; 
+  final TimetableSystem timetableSystem;
 
   const DashboardPage({
     super.key,
@@ -351,6 +351,299 @@ class DashboardPage extends StatelessWidget {
                   style: TextStyle(
                     color: c.muted,
                     fontSize: 10,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: c.panel,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: c.blue.withValues(alpha: 0.4)),
+              ),
+              child: Icon(
+                Icons.notifications_active_outlined,
+                color: c.cyan,
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 25),
+
+        // PLAYER PROFILE
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: Theme.of(context).brightness == Brightness.dark
+                  ? const [Color(0xFF102B50), Color(0xFF091426)]
+                  : const [Color(0xFFE8F4FB), Color(0xFFF7FBFF)],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: c.blue.withValues(alpha: 0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: c.blue.withValues(alpha: 0.08),
+                blurRadius: 20,
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(13),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: c.blue.withValues(alpha: 0.15),
+                      border: Border.all(color: c.cyan),
+                    ),
+                    child: Icon(Icons.person, color: c.cyan, size: 30),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'PLAYER',
+                          style: TextStyle(
+                            color: c.muted,
+                            fontSize: 10,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          player.playerName.toUpperCase(),
+                          style: TextStyle(
+                            color: c.text,
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${player.rank} • ${player.title}',
+                          style: TextStyle(
+                            color: c.cyan,
+                            fontSize: 10,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    'LV. ${player.level.toString().padLeft(2, '0')}',
+                    style: TextStyle(
+                      color: c.cyan,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 22),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'EXPERIENCE POINTS',
+                    style: TextStyle(color: c.muted, fontSize: 10),
+                  ),
+                  Text(
+                    '${player.xp} / ${player.xpRequired} XP',
+                    style: TextStyle(color: c.cyan, fontSize: 11),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 9),
+
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: LinearProgressIndicator(
+                  value: player.xpProgress.clamp(0.0, 1.0),
+                  minHeight: 9,
+                  backgroundColor: c.barTrack,
+                  color: c.cyan,
+                ),
+              ),
+
+              const SizedBox(height: 9),
+
+              Text(
+                '${(player.xpRequired - player.xp).clamp(0, 999999)} XP REQUIRED FOR NEXT LEVEL',
+                style: TextStyle(color: c.muted, fontSize: 9),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 22),
+
+        const SectionTitle(title: 'PLAYER VITALS'),
+
+        const SizedBox(height: 12),
+
+        const Row(
+          children: [
+            Expanded(
+              child: VitalCard(
+                title: 'HP',
+                value: '100 / 100',
+                icon: Icons.favorite,
+                color: Color(0xFFFF526D),
+              ),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: VitalCard(
+                title: 'MP',
+                value: '85 / 100',
+                icon: Icons.bolt,
+                color: Color(0xFF00E5FF),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+
+        AnimatedBuilder(
+          animation: questSystem,
+          builder: (context, child) {
+            final isPenalty = questSystem.isPenaltyActive;
+            final isNight = questSystem.isNightLockActive;
+
+            final Color statusColor = isPenalty
+                ? Colors.redAccent
+                : isNight
+                    ? Colors.blueAccent
+                    : Colors.greenAccent;
+
+            final IconData statusIcon = isPenalty
+                ? Icons.shield
+                : isNight
+                    ? Icons.nightlight_round
+                    : Icons.lock_open;
+
+            final String statusTitle = isPenalty
+                ? 'PENALTY LOCK'
+                : isNight
+                    ? 'NIGHT LOCK'
+                    : 'SYSTEM UNLOCKED';
+
+            String remainingText = '';
+
+            if (isPenalty) {
+              final remaining = questSystem.penaltyRemaining;
+
+              final hours = remaining.inHours;
+              final minutes = remaining.inMinutes.remainder(60);
+              final seconds = remaining.inSeconds.remainder(60);
+
+              remainingText =
+                  'Remaining: ${hours.toString().padLeft(2, '0')}:'
+                  '${minutes.toString().padLeft(2, '0')}:'
+                  '${seconds.toString().padLeft(2, '0')}';
+            } else if (isNight) {
+              remainingText = 'Complete your Wakeup Mission to unlock.';
+            } else {
+              remainingText = 'All restrictions are currently inactive.';
+            }
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 22),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: c.panel,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: statusColor.withValues(alpha: 0.55),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      statusIcon,
+                      color: statusColor,
+                      size: 25,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'APP RESTRICTION STATUS',
+                          style: TextStyle(
+                            color: c.muted,
+                            fontSize: 9,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          statusTitle,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          remainingText,
+                          style: TextStyle(
+                            color: c.muted,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+
+        AnimatedBuilder(
+          animation: timetableSystem,
+          builder: (context, child) {
+            final todaySchedules = timetableSystem.getSchedulesForDay(
+              DateTime.now().weekday,
+            );
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 18),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: c.panel,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: c.divider),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBe: 10,
                     letterSpacing: 2,
                   ),
                 ),
