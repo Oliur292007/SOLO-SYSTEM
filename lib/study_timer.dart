@@ -14,6 +14,9 @@ class StudyTimer extends ChangeNotifier {
   static const String _runningKey = 'timer_running';
   static const String _finishedKey = 'timer_finished';
 
+  // MP RESERVATION KEY
+  static const String _reservedMpKey = 'timer_reserved_mp';
+
   Timer? _ticker;
 
   String? activeQuestId;
@@ -25,6 +28,46 @@ class StudyTimer extends ChangeNotifier {
   bool isFinished = false;
 
   bool _isClaiming = false;
+
+  // RESERVED MP
+  int reservedMp = 0;
+
+  int get reservedMpAmount => reservedMp;
+
+  int availableMp(PlayerSystem player) {
+    return (player.mp - reservedMp).clamp(0, player.maxMp);
+  }
+
+  // AUTOMATIC MISSION DIFFICULTY
+
+  String getDifficulty(int durationMinutes) {
+    if (durationMinutes <= 30) return 'Easy';
+    if (durationMinutes <= 60) return 'Normal';
+    return 'Hard';
+  }
+
+  // MP COST CALCULATION
+
+  int calculateMpCost(int durationMinutes) {
+    if (durationMinutes <= 0) return 0;
+
+    final difficulty = getDifficulty(durationMinutes);
+
+    int rate;
+
+    switch (difficulty) {
+      case 'Easy':
+        rate = 5;
+        break;
+      case 'Normal':
+        rate = 8;
+        break;
+      default:
+        rate = 12;
+    }
+
+    return ((durationMinutes + 14) ~/ 15) * rate;
+  }
 
   String get formattedTime {
     final minutes = (remainingSeconds ~/ 60)
@@ -38,7 +81,7 @@ class StudyTimer extends ChangeNotifier {
     return '$minutes:$seconds';
   }
 
-  // LOAD SAVED TIMER
+  // LOAD SAVED TIMER AND MP RESERVATION
 
   Future<void> loadTimer() async {
     final prefs = await SharedPreferences.getInstance();
@@ -48,6 +91,14 @@ class StudyTimer extends ChangeNotifier {
     endTime = prefs.getInt(_endTimeKey);
     isRunning = prefs.getBool(_runningKey) ?? false;
     isFinished = prefs.getBool(_finishedKey) ?? false;
+
+    reservedMp = prefs.getInt(_reservedMpKey) ?? 0;
+
+    // No active mission means no reservation.
+    if (activeQuestId == null) {
+      reservedMp = 0;
+      await prefs.remove(_reservedMpKey);
+    }
 
     if (isRunning && endTime != null) {
       _updateRemaining();
@@ -71,17 +122,30 @@ class StudyTimer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // START TIMER
+  // START TIMER + RESERVE MP
 
   Future<bool> start({
     required String questId,
     required int durationMinutes,
+    required PlayerSystem player,
   }) async {
-    if (!isLoaded) return false;
+    if (!isLoaded || !player.isLoaded) return false;
+
     if (isRunning || activeQuestId != null) return false;
+
     if (durationMinutes <= 0) return false;
 
+    final mpCost = calculateMpCost(durationMinutes);
+
+    // CHECK AVAILABLE MP
+    if (availableMp(player) < mpCost) {
+      return false;
+    }
+
+    // RESERVE MP WITHOUT DEDUCTING IT
     activeQuestId = questId;
+    reservedMp = mpCost;
+
     remainingSeconds = durationMinutes * 60;
 
     endTime = DateTime.now()
@@ -117,6 +181,7 @@ class StudyTimer extends ChangeNotifier {
       isFinished = true;
     }
 
+    // MP RESERVATION REMAINS ACTIVE.
     await _saveTimer();
 
     notifyListeners();
@@ -126,7 +191,9 @@ class StudyTimer extends ChangeNotifier {
 
   Future<void> resume() async {
     if (!isLoaded) return;
+
     if (isRunning || activeQuestId == null) return;
+
     if (remainingSeconds <= 0 || isFinished) return;
 
     endTime = DateTime.now()
@@ -135,13 +202,14 @@ class StudyTimer extends ChangeNotifier {
 
     isRunning = true;
 
+    // EXISTING MP RESERVATION IS PRESERVED.
     await _saveTimer();
 
     _startTicker();
     notifyListeners();
   }
 
-  // CANCEL TIMER
+  // CANCEL TIMER + RELEASE MP
 
   Future<void> cancel() async {
     _ticker?.cancel();
@@ -155,6 +223,9 @@ class StudyTimer extends ChangeNotifier {
     isFinished = false;
     _isClaiming = false;
 
+    // RELEASE RESERVED MP WITHOUT DEDUCTION.
+    reservedMp = 0;
+
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.remove(_questIdKey);
@@ -162,6 +233,7 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_remainingKey);
     await prefs.remove(_runningKey);
     await prefs.remove(_finishedKey);
+    await prefs.remove(_reservedMpKey);
 
     notifyListeners();
   }
@@ -210,13 +282,14 @@ class StudyTimer extends ChangeNotifier {
     }
   }
 
-  // COMPLETE MISSION + RECORD STUDY TIME
+  // COMPLETE MISSION + DEDUCT RESERVED MP
 
   Future<int?> completeQuest(
     QuestSystem questSystem,
     PlayerSystem player,
   ) async {
     if (!isLoaded || !isFinished) return null;
+
     if (activeQuestId == null || _isClaiming) return null;
 
     _isClaiming = true;
@@ -229,7 +302,13 @@ class StudyTimer extends ChangeNotifier {
       }
 
       final studyMinutes = quest.durationMinutes;
+      final mpToDeduct = reservedMp;
 
+      if (mpToDeduct <= 0) {
+        return null;
+      }
+
+      // COMPLETE QUEST FIRST.
       final earnedXp = await questSystem.completeQuest(
         activeQuestId!,
         player,
@@ -239,11 +318,13 @@ class StudyTimer extends ChangeNotifier {
         return null;
       }
 
-      // Record only successfully completed sessions.
-      // Optional missions also count their study time.
+      // DEDUCT RESERVED MP ONLY AFTER SUCCESS.
+      await player.setMp(player.mp - mpToDeduct);
 
+      // RECORD SUCCESSFUL STUDY TIME.
       await player.addStudyTime(studyMinutes);
 
+      // CLEAR TIMER AND RELEASE RESERVATION.
       await cancel();
 
       return earnedXp;
@@ -252,7 +333,7 @@ class StudyTimer extends ChangeNotifier {
     }
   }
 
-  // SAVE TIMER
+  // SAVE TIMER + RESERVATION
 
   Future<void> _saveTimer() async {
     final prefs = await SharedPreferences.getInstance();
@@ -266,6 +347,8 @@ class StudyTimer extends ChangeNotifier {
     await prefs.setInt(_remainingKey, remainingSeconds);
     await prefs.setBool(_runningKey, isRunning);
     await prefs.setBool(_finishedKey, isFinished);
+
+    await prefs.setInt(_reservedMpKey, reservedMp);
 
     if (endTime != null) {
       await prefs.setInt(_endTimeKey, endTime!);

@@ -5,13 +5,21 @@ import 'quest_system.dart';
 import 'study_timer.dart';
 import 'timetable_system.dart';
 import 'timetable_page.dart';
+import 'rest_system.dart';
 
 void main() {
   final player = PlayerSystem();
   final timetableSystem = TimetableSystem();
+
+  final restSystem = RestSystem(
+    player: player,
+  );
+
   final questSystem = QuestSystem(
     timetableSystem: timetableSystem,
+    restSystem: restSystem,
   );
+
   final studyTimer = StudyTimer();
 
   runApp(
@@ -19,7 +27,8 @@ void main() {
       player: player,
       questSystem: questSystem,
       studyTimer: studyTimer,
-      timetableSystem: timetableSystem, // ✅ now passed
+      timetableSystem: timetableSystem,
+      restSystem: restSystem,
     ),
   );
 }
@@ -119,6 +128,7 @@ class SoloSystemApp extends StatefulWidget {
   final QuestSystem questSystem;
   final StudyTimer studyTimer;
   final TimetableSystem timetableSystem; // ✅ added
+  final RestSystem restSystem;
 
   const SoloSystemApp({
     super.key,
@@ -126,6 +136,7 @@ class SoloSystemApp extends StatefulWidget {
     required this.questSystem,
     required this.studyTimer,
     required this.timetableSystem, // ✅ added
+    required this.restSystem,
   });
 
   @override
@@ -194,6 +205,7 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
         onDarkModeChanged: _changeTheme,
         studyTimer: widget.studyTimer,
         timetableSystem: widget.timetableSystem, // ✅ now in scope
+        restSystem: widget.restSystem,
       ),
     );
   }
@@ -206,6 +218,7 @@ class SystemHome extends StatefulWidget {
   final ValueChanged<bool> onDarkModeChanged;
   final StudyTimer studyTimer;
   final TimetableSystem timetableSystem; // ✅ added
+  final RestSystem restSystem;
 
   const SystemHome({
     super.key,
@@ -215,6 +228,7 @@ class SystemHome extends StatefulWidget {
     required this.onDarkModeChanged,
     required this.studyTimer,
     required this.timetableSystem, // ✅ added
+    required this.restSystem,
   });
 
   @override
@@ -232,6 +246,7 @@ class _SystemHomeState extends State<SystemHome> {
 
   Future<void> _loadSystems() async {
     await widget.player.loadPlayer();
+    await widget.restSystem.loadRest();
     await widget.timetableSystem.loadTimetable();
     await widget.questSystem.loadQuests();
     await widget.studyTimer.loadTimer();
@@ -246,6 +261,7 @@ class _SystemHomeState extends State<SystemHome> {
         widget.player,
         widget.questSystem,
         widget.studyTimer, // ✅ added — timer state refreshes UI
+        widget.restSystem,
       ]),
       builder: (context, child) {
         final pages = [
@@ -253,11 +269,14 @@ class _SystemHomeState extends State<SystemHome> {
             player: widget.player,
             questSystem: widget.questSystem,
             timetableSystem: widget.timetableSystem,
+            restSystem: widget.restSystem,
+            studyTimer: widget.studyTimer,
           ),
           QuestPage(
             player: widget.player,
             questSystem: widget.questSystem,
             studyTimer: widget.studyTimer,
+            restSystem: widget.restSystem,
           ),
           StatusPage(player: widget.player),
           SettingsPage(
@@ -269,7 +288,7 @@ class _SystemHomeState extends State<SystemHome> {
 
         return Scaffold(
           body: SafeArea(
-            child: widget.player.isLoaded && widget.questSystem.isLoaded && widget.timetableSystem.isLoaded
+            child: widget.player.isLoaded && widget.restSystem.isLoaded && widget.questSystem.isLoaded && widget.timetableSystem.isLoaded
                 ? pages[selectedIndex]
                 : Center(
                     child: CircularProgressIndicator(color: c.cyan),
@@ -315,12 +334,16 @@ class DashboardPage extends StatelessWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
   final TimetableSystem timetableSystem;
+  final RestSystem restSystem;
+  final StudyTimer studyTimer;
 
   const DashboardPage({
     super.key,
     required this.player,
     required this.questSystem,
     required this.timetableSystem,
+    required this.restSystem,
+    required this.studyTimer,
   });
 
   @override
@@ -494,26 +517,150 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        const Row(
+        Row(
           children: [
             Expanded(
               child: VitalCard(
                 title: 'HP',
-                value: '100 / 100',
+                value: '${player.hp} / ${player.maxHp}',
                 icon: Icons.favorite,
-                color: Color(0xFFFF526D),
+                color: const Color(0xFFFF526D),
               ),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: VitalCard(
                 title: 'MP',
-                value: '85 / 100',
+                value: '${player.mp} / ${player.maxMp}',
                 icon: Icons.bolt,
-                color: Color(0xFF00E5FF),
+                color: const Color(0xFF00E5FF),
               ),
             ),
           ],
+        ),
+
+          AnimatedBuilder(
+            animation: restSystem,
+            builder: (context, child) {
+              final active = restSystem.isShortRestActive;
+              final minutes = restSystem.elapsedShortRestMinutes;
+              final recoveryRemaining =
+                restSystem.shortRestTimeToNextRecovery;
+
+              final recoveryMinutes = recoveryRemaining.inMinutes;
+              final recoverySeconds = recoveryRemaining.inSeconds.remainder(60);
+
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: c.panel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: c.cyan.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'SHORT REST',
+                      style: TextStyle(
+                        color: c.cyan,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      active
+                      ? 'Resting: $minutes MIN\n'
+                      'Next Recovery: '
+                      '${recoveryMinutes.toString().padLeft(2, '0')}:'
+                      '${recoverySeconds.toString().padLeft(2, '0')}'
+                    : 'Recover HP and MP by resting.',
+                      
+                      style: TextStyle(color: c.muted),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: active
+                        .
+                        ? () async {
+                            await restSystem.stopShortRest();
+                          }
+                        : (restSystem.isLongRestActive ||
+                                studyTimer.activeQuestId != null)
+                            ? null
+                            : () async {
+                                await restSystem.startShortRest();
+                              },
+                        child: Text(
+                          active ? 'END REST' : 'START SHORT REST',
+                        ),
+                      ),
+                    ),
+                    if (restSystem.isLongRestActive)
+                      Text(
+                        'Long Rest is currently active.',
+                        style: TextStyle(color: c.muted, fontSize: 11),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+
+        if (restSystem.isLongRestActive)
+        Container(
+          margin: const EdgeInsets.only(top: 14),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: c.panel,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: Colors.greenAccent.withValues(alpha: 0.45),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.nightlight_round,
+                    color: Colors.greenAccent,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'LONG REST ACTIVE',
+                    style: TextStyle(
+                      color: Colors.greenAccent,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Recovery in progress...',
+                style: TextStyle(color: c.text),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Time Remaining: '
+                '${(restSystem.remainingLongRestMinutes ~/ 60).toString().padLeft(2, '0')}:'
+                '${(restSystem.remainingLongRestMinutes % 60).toString().padLeft(2, '0')}',
+                style: TextStyle(color: c.muted),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Wakeup Mission ends Long Rest.',
+                style: TextStyle(color: c.muted, fontSize: 11),
+              ),
+            ],
+          ),
         ),
 
         const SizedBox(height: 24),
@@ -1023,12 +1170,14 @@ class QuestPage extends StatelessWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
   final StudyTimer studyTimer;
+  final RestSystem restSystem;
 
   const QuestPage({
     super.key,
     required this.player,
     required this.questSystem,
     required this.studyTimer,
+    required this.restSystem,
   });
 
   @override
@@ -1036,7 +1185,11 @@ class QuestPage extends StatelessWidget {
     final c = SystemColors.of(context);
 
     return AnimatedBuilder(
-      animation: Listenable.merge([questSystem, studyTimer]),
+      animation: Listenable.merge([
+        questSystem, 
+        studyTimer,
+        restSystem,
+      ]),
       builder: (context, child) {
         final activeId = studyTimer.activeQuestId;
 
@@ -1290,12 +1443,15 @@ class QuestPage extends StatelessWidget {
                     // TIMETABLE MISSIONS: START STUDY BUTTON ONLY
                     else
                       ElevatedButton(
-                        onPressed: anotherActive
-                            ? null
-                            : () => studyTimer.start(
-                                  questId: quest.id,
-                                  durationMinutes: quest.durationMinutes,
-                                ),
+                        onPressed: (anotherActive ||
+                                    restSystem.isShortRestActive ||
+                                    restSystem.isLongRestActive)
+                                ? null
+                                : () => studyTimer.start(
+                                      questId: quest.id,
+                                      durationMinutes: quest.durationMinutes,
+                                      player: player,
+                                    ),
                         child: const Text('Start Study'),
                       ),
                   ],
@@ -1369,21 +1525,21 @@ class StatusPage extends StatelessWidget {
         const SectionTitle(title: 'ATTRIBUTES'),
         const SizedBox(height: 12),
 
-        const Row(
+        Row(
           children: [
             Expanded(
               child: InfoCard(
                 title: 'STRENGTH',
-                value: '10',
+                value: '${player.strength}',
                 unit: 'STR',
                 icon: Icons.fitness_center,
               ),
             ),
-            SizedBox(width: 10),
+            const SizedBox(width: 10),
             Expanded(
               child: InfoCard(
                 title: 'INTELLECT',
-                value: '10',
+                value: '${player.intellect}',
                 unit: 'INT',
                 icon: Icons.psychology,
               ),
