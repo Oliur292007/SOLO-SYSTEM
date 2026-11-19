@@ -252,7 +252,7 @@ class _SystemHomeState extends State<SystemHome> {
           DashboardPage(
             player: widget.player,
             questSystem: widget.questSystem,
-            timetableSystem: widget.timetableSystem, 
+            timetableSystem: widget.timetableSystem,
           ),
           QuestPage(
             player: widget.player,
@@ -314,7 +314,7 @@ class _SystemHomeState extends State<SystemHome> {
 class DashboardPage extends StatelessWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
-  final TimetableSystem timetableSystem; 
+  final TimetableSystem timetableSystem;
 
   const DashboardPage({
     super.key,
@@ -517,7 +517,7 @@ class DashboardPage extends StatelessWidget {
         ),
 
         const SizedBox(height: 24),
-        
+
         AnimatedBuilder(
           animation: questSystem,
           builder: (context, child) {
@@ -623,7 +623,7 @@ class DashboardPage extends StatelessWidget {
             );
           },
         ),
-        
+
         AnimatedBuilder(
           animation: timetableSystem,
           builder: (context, child) {
@@ -721,7 +721,6 @@ class DashboardPage extends StatelessWidget {
           },
         ),
 
-
         const SectionTitle(title: 'DAILY QUEST'),
 
         const SizedBox(height: 12),
@@ -776,7 +775,6 @@ class DashboardPage extends StatelessWidget {
               ),
               const SizedBox(height: 15),
               ...questSystem.quests.map(
-                
                 (quest) => QuestRow(
                   name: quest.name,
                   duration: quest.requiresTimer
@@ -807,17 +805,6 @@ class DashboardPage extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             const Expanded(
-              child: InfoCard(
-                title: 'SCREEN TIME',
-                value: '01:25',
-                unit: 'HOURS',
-                icon: Icons.phone_android,
-              ),
-            ),
-          ],
-        ),
-            SizedBox(width: 10),
-            Expanded(
               child: InfoCard(
                 title: 'SCREEN TIME',
                 value: '01:25',
@@ -1031,7 +1018,6 @@ class InfoCard extends StatelessWidget {
     );
   }
 }
-
 
 class QuestPage extends StatelessWidget {
   final PlayerSystem player;
@@ -1279,7 +1265,6 @@ class QuestPage extends StatelessWidget {
                         ),
                       )
 
-
                     // FIXED MISSIONS: COMPLETE BUTTON ONLY
                     else if (isFixedMission)
                       ElevatedButton(
@@ -1323,7 +1308,6 @@ class QuestPage extends StatelessWidget {
     );
   }
 }
-
 
 class StatusPage extends StatelessWidget {
   final PlayerSystem player;
@@ -1370,6 +1354,11 @@ class StatusPage extends StatelessWidget {
                 context,
                 'XP PROGRESS',
                 '${(player.xpProgress * 100).toStringAsFixed(0)}%',
+              ),
+              _statusRow(
+                context,
+                'TOTAL STUDY TIME',
+                player.totalStudyTimeFormatted,
               ),
             ],
           ),
@@ -1563,4 +1552,3 @@ class SettingsPage extends StatelessWidget {
     );
   }
 }
-
