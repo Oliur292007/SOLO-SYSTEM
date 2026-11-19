@@ -127,7 +127,7 @@ class SoloSystemApp extends StatefulWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
   final StudyTimer studyTimer;
-  final TimetableSystem timetableSystem; // ✅ added
+  final TimetableSystem timetableSystem;
   final RestSystem restSystem;
 
   const SoloSystemApp({
@@ -135,7 +135,7 @@ class SoloSystemApp extends StatefulWidget {
     required this.player,
     required this.questSystem,
     required this.studyTimer,
-    required this.timetableSystem, // ✅ added
+    required this.timetableSystem,
     required this.restSystem,
   });
 
@@ -204,7 +204,7 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
         isDarkMode: isDarkMode,
         onDarkModeChanged: _changeTheme,
         studyTimer: widget.studyTimer,
-        timetableSystem: widget.timetableSystem, // ✅ now in scope
+        timetableSystem: widget.timetableSystem,
         restSystem: widget.restSystem,
       ),
     );
@@ -217,7 +217,7 @@ class SystemHome extends StatefulWidget {
   final bool isDarkMode;
   final ValueChanged<bool> onDarkModeChanged;
   final StudyTimer studyTimer;
-  final TimetableSystem timetableSystem; // ✅ added
+  final TimetableSystem timetableSystem;
   final RestSystem restSystem;
 
   const SystemHome({
@@ -227,7 +227,7 @@ class SystemHome extends StatefulWidget {
     required this.isDarkMode,
     required this.onDarkModeChanged,
     required this.studyTimer,
-    required this.timetableSystem, // ✅ added
+    required this.timetableSystem,
     required this.restSystem,
   });
 
@@ -260,7 +260,7 @@ class _SystemHomeState extends State<SystemHome> {
       animation: Listenable.merge([
         widget.player,
         widget.questSystem,
-        widget.studyTimer, // ✅ added — timer state refreshes UI
+        widget.studyTimer,
         widget.restSystem,
       ]),
       builder: (context, child) {
@@ -288,14 +288,17 @@ class _SystemHomeState extends State<SystemHome> {
 
         return Scaffold(
           body: SafeArea(
-            child: widget.player.isLoaded && widget.restSystem.isLoaded && widget.questSystem.isLoaded && widget.timetableSystem.isLoaded
+            child: widget.player.isLoaded &&
+                    widget.restSystem.isLoaded &&
+                    widget.questSystem.isLoaded &&
+                    widget.timetableSystem.isLoaded
                 ? pages[selectedIndex]
                 : Center(
                     child: CircularProgressIndicator(color: c.cyan),
                   ),
           ),
           bottomNavigationBar: NavigationBar(
-            backgroundColor: c.panel,            // ✅ theme-aware
+            backgroundColor: c.panel,
             indicatorColor: c.blue.withValues(alpha: 0.18),
             selectedIndex: selectedIndex,
             onDestinationSelected: (index) {
@@ -330,6 +333,10 @@ class _SystemHomeState extends State<SystemHome> {
   }
 }
 
+// ============================================================
+// DASHBOARD PAGE
+// ============================================================
+
 class DashboardPage extends StatelessWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
@@ -353,6 +360,7 @@ class DashboardPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
+        // ============ HEADER ============
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -386,17 +394,14 @@ class DashboardPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: c.blue.withValues(alpha: 0.4)),
               ),
-              child: Icon(
-                Icons.notifications_active_outlined,
-                color: c.cyan,
-              ),
+              child: Icon(Icons.notifications_active_outlined, color: c.cyan),
             ),
           ],
         ),
 
         const SizedBox(height: 25),
 
-        // PLAYER PROFILE
+        // ============ PLAYER PROFILE ============
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
@@ -517,7 +522,9 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
+        // ============ VITALS (HP + MP with reserved info) ============
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: VitalCard(
@@ -525,145 +532,179 @@ class DashboardPage extends StatelessWidget {
                 value: '${player.hp} / ${player.maxHp}',
                 icon: Icons.favorite,
                 color: const Color(0xFFFF526D),
+                progress: player.hpProgress,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: VitalCard(
-                title: 'MP',
-                value: '${player.mp} / ${player.maxMp}',
-                icon: Icons.bolt,
+              child: _MpVitalCard(
+                player: player,
+                reservedMp: studyTimer.reservedMpAmount,
                 color: const Color(0xFF00E5FF),
               ),
             ),
           ],
         ),
 
-          AnimatedBuilder(
-            animation: restSystem,
-            builder: (context, child) {
-              final active = restSystem.isShortRestActive;
-              final minutes = restSystem.elapsedShortRestMinutes;
-              final recoveryRemaining =
-                restSystem.shortRestTimeToNextRecovery;
+        const SizedBox(height: 18),
 
-              final recoveryMinutes = recoveryRemaining.inMinutes;
-              final recoverySeconds = recoveryRemaining.inSeconds.remainder(60);
+        // ============ SHORT REST ============
+        AnimatedBuilder(
+          animation: restSystem,
+          builder: (context, child) {
+            final active = restSystem.isShortRestActive;
+            final minutes = restSystem.elapsedShortRestMinutes;
+            final recoveryRemaining = restSystem.shortRestTimeToNextRecovery;
 
-              return Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: c.panel,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: c.cyan.withValues(alpha: 0.35),
-                  ),
+            final recoveryMinutes = recoveryRemaining.inMinutes;
+            final recoverySeconds = recoveryRemaining.inSeconds.remainder(60);
+
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: c.panel,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: active
+                      ? c.cyan.withValues(alpha: 0.7)
+                      : c.cyan.withValues(alpha: 0.35),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'SHORT REST',
-                      style: TextStyle(
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.bedtime_outlined,
                         color: c.cyan,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
+                        size: 18,
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      active
-                      ? 'Resting: $minutes MIN\n'
-                      'Next Recovery: '
-                      '${recoveryMinutes.toString().padLeft(2, '0')}:'
-                      '${recoverySeconds.toString().padLeft(2, '0')}'
-                    : 'Recover HP and MP by resting.',
-                      
-                      style: TextStyle(color: c.muted),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: active
-                        ? () async {
-                            await restSystem.stopShortRest();
-                          }
-                        : (restSystem.isLongRestActive ||
-                                studyTimer.activeQuestId != null)
-                            ? null
-                            : () async {
-                                await restSystem.startShortRest();
-                              },
-                        child: Text(
-                          active ? 'END REST' : 'START SHORT REST',
+                      const SizedBox(width: 8),
+                      Text(
+                        'SHORT REST',
+                        style: TextStyle(
+                          color: c.cyan,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
                         ),
                       ),
+                      const Spacer(),
+                      if (active)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: c.cyan.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            'ACTIVE',
+                            style: TextStyle(
+                              color: c.cyan,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    active
+                        ? 'Resting for $minutes min\n'
+                            'Next +5 HP / +5 MP in '
+                            '${recoveryMinutes.toString().padLeft(2, '0')}:'
+                            '${recoverySeconds.toString().padLeft(2, '0')}'
+                        : 'Recover HP and MP by resting.\n+5 HP / +5 MP every 10 min.',
+                    style: TextStyle(color: c.muted, height: 1.5),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: active
+                          ? () async {
+                              await restSystem.stopShortRest();
+                            }
+                          : (restSystem.isLongRestActive ||
+                                  studyTimer.activeQuestId != null)
+                              ? null
+                              : () async {
+                                  await restSystem.startShortRest();
+                                },
+                      child: Text(active ? 'END REST' : 'START SHORT REST'),
                     ),
-                    if (restSystem.isLongRestActive)
-                      Text(
+                  ),
+                  if (restSystem.isLongRestActive)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
                         'Long Rest is currently active.',
                         style: TextStyle(color: c.muted, fontSize: 11),
                       ),
-                  ],
-                ),
-              );
-            },
-          ),
-
-        if (restSystem.isLongRestActive)
-        Container(
-          margin: const EdgeInsets.only(top: 14),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: c.panel,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: Colors.greenAccent.withValues(alpha: 0.45),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.nightlight_round,
-                    color: Colors.greenAccent,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'LONG REST ACTIVE',
-                    style: TextStyle(
-                      color: Colors.greenAccent,
-                      fontWeight: FontWeight.bold,
                     ),
-                  ),
                 ],
               ),
-              const SizedBox(height: 10),
-              Text(
-                'Recovery in progress...',
-                style: TextStyle(color: c.text),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Time Remaining: '
-                '${(restSystem.remainingLongRestMinutes ~/ 60).toString().padLeft(2, '0')}:'
-                '${(restSystem.remainingLongRestMinutes % 60).toString().padLeft(2, '0')}',
-                style: TextStyle(color: c.muted),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Wakeup Mission ends Long Rest.',
-                style: TextStyle(color: c.muted, fontSize: 11),
-              ),
-            ],
-          ),
+            );
+          },
         ),
+
+        // ============ LONG REST ============
+        if (restSystem.isLongRestActive)
+          Container(
+            margin: const EdgeInsets.only(top: 14),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: c.panel,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.greenAccent.withValues(alpha: 0.45),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.nightlight_round,
+                      color: Colors.greenAccent,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'LONG REST ACTIVE',
+                      style: TextStyle(
+                        color: Colors.greenAccent,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${(restSystem.remainingLongRestMinutes ~/ 60).toString().padLeft(2, '0')}:'
+                      '${(restSystem.remainingLongRestMinutes % 60).toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        color: Colors.greenAccent,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Recovery in progress...\nWakeup Mission ends Long Rest.',
+                  style: TextStyle(color: c.muted, height: 1.5),
+                ),
+              ],
+            ),
+          ),
 
         const SizedBox(height: 24),
 
+        // ============ APP RESTRICTION STATUS ============
         AnimatedBuilder(
           animation: questSystem,
           builder: (context, child) {
@@ -688,15 +729,13 @@ class DashboardPage extends StatelessWidget {
                     ? 'NIGHT LOCK'
                     : 'SYSTEM UNLOCKED';
 
-            String remainingText = '';
+            String remainingText;
 
             if (isPenalty) {
               final remaining = questSystem.penaltyRemaining;
-
               final hours = remaining.inHours;
               final minutes = remaining.inMinutes.remainder(60);
               final seconds = remaining.inSeconds.remainder(60);
-
               remainingText =
                   'Remaining: ${hours.toString().padLeft(2, '0')}:'
                   '${minutes.toString().padLeft(2, '0')}:'
@@ -725,11 +764,7 @@ class DashboardPage extends StatelessWidget {
                       color: statusColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(
-                      statusIcon,
-                      color: statusColor,
-                      size: 25,
-                    ),
+                    child: Icon(statusIcon, color: statusColor, size: 25),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -756,10 +791,7 @@ class DashboardPage extends StatelessWidget {
                         const SizedBox(height: 5),
                         Text(
                           remainingText,
-                          style: TextStyle(
-                            color: c.muted,
-                            fontSize: 10,
-                          ),
+                          style: TextStyle(color: c.muted, fontSize: 10),
                         ),
                       ],
                     ),
@@ -770,12 +802,12 @@ class DashboardPage extends StatelessWidget {
           },
         ),
 
+        // ============ TODAY'S SCHEDULE ============
         AnimatedBuilder(
           animation: timetableSystem,
           builder: (context, child) {
-            final todaySchedules = timetableSystem.getSchedulesForDay(
-              DateTime.now().weekday,
-            );
+            final todaySchedules =
+                timetableSystem.getSchedulesForDay(DateTime.now().weekday);
 
             return Container(
               margin: const EdgeInsets.only(bottom: 18),
@@ -810,41 +842,71 @@ class DashboardPage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-
                   if (todaySchedules.isEmpty)
-                    Text(
-                      "No study schedule for today.",
-                      style: TextStyle(color: c.muted),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.event_available,
+                            size: 17,
+                            color: c.muted,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            "No study schedule for today.",
+                            style: TextStyle(color: c.muted),
+                          ),
+                        ],
+                      ),
                     )
                   else
                     ...todaySchedules.take(3).map(
-                      (item) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.schedule,
-                              size: 17,
-                              color: c.cyan,
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: [
+                                Icon(Icons.schedule, size: 17, color: c.cyan),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    item.subject,
+                                    style: TextStyle(color: c.text),
+                                  ),
+                                ),
+                                if (item.isOptional)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: Text(
+                                      'OPT',
+                                      style: TextStyle(
+                                        color: c.cyan,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                Text(
+                                  item.startTime,
+                                  style: TextStyle(color: c.muted),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                item.subject,
-                                style: TextStyle(color: c.text),
-                              ),
-                            ),
-                            Text(
-                              item.startTime,
-                              style: TextStyle(color: c.muted),
-                            ),
-                          ],
+                          ),
+                        ),
+                  if (todaySchedules.length > 3)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '+ ${todaySchedules.length - 3} more',
+                        style: TextStyle(
+                          color: c.muted,
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
                         ),
                       ),
                     ),
-
                   const SizedBox(height: 10),
-
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
@@ -871,6 +933,7 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
+        // ============ DAILY QUEST PROGRESS ============
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -920,15 +983,16 @@ class DashboardPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 15),
-              ...questSystem.quests.map(
-                (quest) => QuestRow(
+              ...questSystem.quests.map((quest) {
+                final state = questSystem.getQuestState(quest.id);
+                return QuestRow(
                   name: quest.name,
                   duration: quest.requiresTimer
                       ? '${quest.durationMinutes} Min'
                       : '',
-                  completed: questSystem.isCompleted(quest.id),
-                ),
-              ),
+                  state: state,
+                );
+              }),
             ],
           ),
         ),
@@ -939,6 +1003,7 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
+        // ============ STATS (NO MORE HARDCODED SCREEN TIME) ============
         Row(
           children: [
             Expanded(
@@ -950,12 +1015,12 @@ class DashboardPage extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: InfoCard(
-                title: 'SCREEN TIME',
-                value: '01:25',
-                unit: 'HOURS',
-                icon: Icons.phone_android,
+                title: 'TOTAL XP',
+                value: player.totalXp.toString(),
+                unit: 'EARNED',
+                icon: Icons.stars,
               ),
             ),
           ],
@@ -1004,6 +1069,73 @@ class DashboardPage extends StatelessWidget {
   }
 }
 
+// ============================================================
+// MP VITAL CARD (with reserved breakdown)
+// ============================================================
+
+class _MpVitalCard extends StatelessWidget {
+  final PlayerSystem player;
+  final int reservedMp;
+  final Color color;
+
+  const _MpVitalCard({
+    required this.player,
+    required this.reservedMp,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SystemColors.of(context);
+    final available = (player.mp - reservedMp).clamp(0, player.maxMp);
+
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: c.panel,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bolt, color: color, size: 18),
+              const SizedBox(width: 8),
+              Text('MP', style: TextStyle(color: color)),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Text(
+            '${player.mp} / ${player.maxMp}',
+            style: TextStyle(
+              color: c.text,
+              fontWeight: FontWeight.bold,
+              fontSize: 17,
+            ),
+          ),
+          if (reservedMp > 0) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Available: $available  •  Reserved: $reservedMp',
+              style: TextStyle(
+                color: c.muted,
+                fontSize: 9,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// SHARED WIDGETS
+// ============================================================
+
 class SectionTitle extends StatelessWidget {
   final String title;
 
@@ -1028,6 +1160,7 @@ class VitalCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
+  final double? progress;
 
   const VitalCard({
     super.key,
@@ -1035,6 +1168,7 @@ class VitalCard extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.color,
+    this.progress,
   });
 
   @override
@@ -1067,6 +1201,18 @@ class VitalCard extends StatelessWidget {
               fontSize: 17,
             ),
           ),
+          if (progress != null) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: LinearProgressIndicator(
+                value: progress!.clamp(0.0, 1.0),
+                minHeight: 5,
+                backgroundColor: c.barTrack,
+                color: color,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1076,38 +1222,82 @@ class VitalCard extends StatelessWidget {
 class QuestRow extends StatelessWidget {
   final String name;
   final String duration;
-  final bool completed;
+  final QuestState state;
 
   const QuestRow({
     super.key,
     required this.name,
     required this.duration,
-    required this.completed,
+    required this.state,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = SystemColors.of(context);
 
+    IconData icon;
+    Color iconColor;
+    Color textColor = c.text;
+    TextDecoration? decoration;
+
+    switch (state) {
+      case QuestState.completed:
+        icon = Icons.check_circle;
+        iconColor = Colors.green;
+        textColor = c.muted;
+        decoration = TextDecoration.lineThrough;
+        break;
+      case QuestState.missed:
+        icon = Icons.cancel;
+        iconColor = Colors.redAccent;
+        textColor = c.muted;
+        decoration = TextDecoration.lineThrough;
+        break;
+      case QuestState.active:
+        icon = Icons.play_circle;
+        iconColor = c.cyan;
+        break;
+      case QuestState.available:
+        icon = Icons.circle_outlined;
+        iconColor = c.muted;
+        break;
+      case QuestState.upcoming:
+        icon = Icons.schedule;
+        iconColor = c.muted;
+        break;
+      case QuestState.locked:
+        icon = Icons.lock;
+        iconColor = c.muted;
+        break;
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         children: [
-          Icon(
-            completed ? Icons.check_circle : Icons.circle_outlined,
-            color: completed ? Colors.green : c.muted,
-            size: 19,
-          ),
+          Icon(icon, color: iconColor, size: 19),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               name,
               style: TextStyle(
-                color: completed ? c.muted : c.text,
-                decoration: completed ? TextDecoration.lineThrough : null,
+                color: textColor,
+                decoration: decoration,
               ),
             ),
           ),
+          if (state == QuestState.missed)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Text(
+                'MISSED',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
           Text(
             duration,
             style: TextStyle(color: c.muted, fontSize: 11),
@@ -1165,6 +1355,10 @@ class InfoCard extends StatelessWidget {
   }
 }
 
+// ============================================================
+// QUEST PAGE
+// ============================================================
+
 class QuestPage extends StatelessWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
@@ -1185,12 +1379,14 @@ class QuestPage extends StatelessWidget {
 
     return AnimatedBuilder(
       animation: Listenable.merge([
-        questSystem, 
+        questSystem,
         studyTimer,
         restSystem,
+        player, // ✅ FIX: player listener so XP updates appear immediately
       ]),
       builder: (context, child) {
         final activeId = studyTimer.activeQuestId;
+        final quests = questSystem.quests;
 
         return ListView(
           padding: const EdgeInsets.all(20),
@@ -1214,7 +1410,7 @@ class QuestPage extends StatelessWidget {
 
             const SizedBox(height: 20),
 
-            // ACTIVE STUDY SESSION
+            // ============ ACTIVE STUDY SESSION ============
             if (activeId != null)
               Container(
                 padding: const EdgeInsets.all(18),
@@ -1222,44 +1418,84 @@ class QuestPage extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: c.panel,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: c.cyan),
+                  border: Border.all(color: c.cyan, width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: c.cyan.withValues(alpha: 0.15),
+                      blurRadius: 20,
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'ACTIVE STUDY SESSION',
-                      style: TextStyle(
-                        color: c.cyan,
-                        fontWeight: FontWeight.bold,
+                    Row(
+                      children: [
+                        Icon(Icons.timer, color: c.cyan, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'ACTIVE STUDY SESSION',
+                          style: TextStyle(
+                            color: c.cyan,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (studyTimer.isFinished)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.greenAccent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'FINISHED',
+                              style: TextStyle(
+                                color: Colors.greenAccent,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    Center(
+                      child: Text(
+                        studyTimer.formattedTime,
+                        style: TextStyle(
+                          color: c.text,
+                          fontSize: 48,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 2,
+                        ),
                       ),
                     ),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
 
-                    Text(
-                      studyTimer.formattedTime,
-                      style: TextStyle(
-                        color: c.text,
-                        fontSize: 42,
-                        fontWeight: FontWeight.bold,
+                    Center(
+                      child: Text(
+                        _activeSessionStatus(studyTimer),
+                        style: TextStyle(
+                          color: studyTimer.isFinished ? c.cyan : c.muted,
+                          fontSize: 11,
+                          letterSpacing: 1,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
 
-                    const SizedBox(height: 12),
-
-                    if (studyTimer.isFinished)
-                      Text(
-                        'Timer completed! Claim your XP.',
-                        style: TextStyle(color: c.cyan),
-                      )
-                    else
-                      Text(
-                        studyTimer.isRunning
-                            ? 'Timer Running'
-                            : 'Timer Paused',
-                        style: TextStyle(color: c.muted),
-                      ),
+                    // Session metadata
+                    const SizedBox(height: 14),
+                    _sessionMetaRow(context, studyTimer, questSystem),
 
                     const SizedBox(height: 14),
 
@@ -1268,42 +1504,73 @@ class QuestPage extends StatelessWidget {
                       runSpacing: 8,
                       children: [
                         if (studyTimer.isRunning)
-                          ElevatedButton(
+                          ElevatedButton.icon(
                             onPressed: () => studyTimer.pause(),
-                            child: const Text('Pause'),
+                            icon: const Icon(Icons.pause, size: 18),
+                            label: const Text('Pause'),
                           )
                         else if (!studyTimer.isFinished)
-                          ElevatedButton(
+                          ElevatedButton.icon(
                             onPressed: () => studyTimer.resume(),
-                            child: const Text('Resume'),
+                            icon: const Icon(Icons.play_arrow, size: 18),
+                            label: const Text('Resume'),
                           ),
-
                         if (studyTimer.isFinished)
-                        ElevatedButton(
-                          onPressed: () async {
-                            final xp = await studyTimer.completeQuest(
-                              questSystem,
-                              player,
-                            );
-
-                            if (!context.mounted) return;
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  xp != null
-                                      ? 'Quest completed! +$xp XP'
-                                      : 'Claim failed! Please check the console.',
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              final xp = await studyTimer.completeQuest(
+                                questSystem,
+                                player,
+                              );
+                              if (!context.mounted) return;
+                              final messenger =
+                                  ScaffoldMessenger.of(context);
+                              messenger.clearSnackBars();
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    xp != null
+                                        ? 'Quest completed! +$xp XP'
+                                        : 'Claim failed. Check the console.',
+                                  ),
                                 ),
+                              );
+                            },
+                            icon: const Icon(Icons.check, size: 18),
+                            label: const Text('Claim XP'),
+                          ),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (dialogContext) => AlertDialog(
+                                title: const Text('Cancel Session?'),
+                                content: const Text(
+                                  'Your progress will not be saved and reserved MP will be released.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(dialogContext, false),
+                                    child: const Text('KEEP'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(dialogContext, true),
+                                    child: const Text(
+                                      'CANCEL SESSION',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
+                            if (confirmed == true) {
+                              await studyTimer.cancel();
+                            }
                           },
-                          child: const Text('Claim XP'),
-                        ),
-
-                        OutlinedButton(
-                          onPressed: () => studyTimer.cancel(),
-                          child: const Text('Cancel'),
+                          icon: const Icon(Icons.close, size: 18),
+                          label: const Text('Cancel'),
                         ),
                       ],
                     ),
@@ -1311,21 +1578,67 @@ class QuestPage extends StatelessWidget {
                 ),
               ),
 
-            // DAILY MISSIONS
-            ...questSystem.quests.map((quest) {
-              final completed = questSystem.isCompleted(quest.id);
+            // ============ EMPTY STATE ============
+            if (quests.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: c.panel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: c.divider),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.assignment_outlined,
+                      color: c.muted,
+                      size: 42,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'NO QUESTS TODAY',
+                      style: TextStyle(
+                        color: c.text,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Add study schedules in Timetable to create quests.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: c.muted),
+                    ),
+                  ],
+                ),
+              ),
+
+            // ============ DAILY MISSIONS ============
+            ...quests.map((quest) {
+              final state = questSystem.getQuestState(quest.id);
               final isActive = activeId == quest.id;
               final anotherActive = activeId != null && !isActive;
-
               final isFixedMission = !quest.requiresTimer;
-              final isOverdue = quest.isOverdue && !completed;
-              final isUpcoming = isFixedMission && !quest.isAvailable;
 
-              final availableAt = quest.availableFrom;
-
-              final availableLabel = availableAt == null
-                  ? ''
-                  : '${availableAt.hour % 12 == 0 ? 12 : availableAt.hour % 12}:${availableAt.minute.toString().padLeft(2, '0')} ${availableAt.hour >= 12 ? 'PM' : 'AM'}';
+              // Color based on state
+              final Color borderColor;
+              switch (state) {
+                case QuestState.completed:
+                  borderColor = Colors.green.withValues(alpha: 0.5);
+                  break;
+                case QuestState.missed:
+                  borderColor = Colors.redAccent.withValues(alpha: 0.5);
+                  break;
+                case QuestState.active:
+                  borderColor = c.cyan;
+                  break;
+                case QuestState.upcoming:
+                  borderColor = c.text.withValues(alpha: 0.10);
+                  break;
+                case QuestState.available:
+                case QuestState.locked:
+                  borderColor = c.text.withValues(alpha: 0.10);
+                  break;
+              }
 
               return Container(
                 key: ValueKey(quest.id),
@@ -1335,9 +1648,8 @@ class QuestPage extends StatelessWidget {
                   color: c.panel,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: isActive
-                        ? c.cyan
-                        : c.text.withValues(alpha: 0.10),
+                    color: borderColor,
+                    width: state == QuestState.active ? 1.5 : 1,
                   ),
                 ),
                 child: Column(
@@ -1349,20 +1661,36 @@ class QuestPage extends StatelessWidget {
                           child: Text(
                             quest.name,
                             style: TextStyle(
-                              color: c.text,
+                              color: state == QuestState.missed
+                                  ? c.muted
+                                  : c.text,
                               fontSize: 17,
                               fontWeight: FontWeight.bold,
+                              decoration: state == QuestState.completed ||
+                                      state == QuestState.missed
+                                  ? TextDecoration.lineThrough
+                                  : null,
                             ),
                           ),
                         ),
-
                         if (quest.isOptional)
-                          Text(
-                            'OPTIONAL',
-                            style: TextStyle(
-                              color: c.cyan,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: c.cyan.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              'OPTIONAL • NO XP',
+                              style: TextStyle(
+                                color: c.cyan,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ),
                       ],
@@ -1372,7 +1700,7 @@ class QuestPage extends StatelessWidget {
 
                     if (!isFixedMission)
                       Text(
-                        '${quest.durationMinutes} minutes • ${quest.xpReward} XP',
+                        '${quest.durationMinutes} min • ${quest.xpReward} XP',
                         style: TextStyle(color: c.muted),
                       )
                     else
@@ -1383,78 +1711,18 @@ class QuestPage extends StatelessWidget {
 
                     const SizedBox(height: 12),
 
-                    if (completed)
-                      Text(
-                        'COMPLETED',
-                        style: TextStyle(
-                          color: c.cyan,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-
-                    else if (isOverdue)
-                      Text(
-                        'MISSION FAILED',
-                        style: TextStyle(
-                          color: Colors.redAccent,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-
-                    else if (isActive)
-                      Text(
-                        'ACTIVE SESSION',
-                        style: TextStyle(color: c.cyan),
-                      )
-
-                    // FIXED MISSIONS: UPCOMING STATUS
-                    else if (isUpcoming)
-                      Text(
-                        'UPCOMING • AVAILABLE AT $availableLabel',
-                        style: TextStyle(
-                          color: c.muted,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                          letterSpacing: 0.5,
-                        ),
-                      )
-
-                    // FIXED MISSIONS: COMPLETE BUTTON ONLY
-                    else if (isFixedMission)
-                      ElevatedButton(
-                        onPressed: () async {
-                          final xp = await questSystem.completeFixedMission(
-                            quest.id,
-                            player,
-                          );
-
-                          if (context.mounted && xp != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  '${quest.name} completed! +$xp XP',
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                        child: const Text('Complete'),
-                      )
-
-                    // TIMETABLE MISSIONS: START STUDY BUTTON ONLY
-                    else
-                      ElevatedButton(
-                        onPressed: (anotherActive ||
-                                    restSystem.isShortRestActive ||
-                                    restSystem.isLongRestActive)
-                                ? null
-                                : () => studyTimer.start(
-                                      questId: quest.id,
-                                      durationMinutes: quest.durationMinutes,
-                                      player: player,
-                                    ),
-                        child: const Text('Start Study'),
-                      ),
+                    _questStateWidget(
+                      context: context,
+                      quest: quest,
+                      state: state,
+                      isActive: isActive,
+                      anotherActive: anotherActive,
+                      isFixedMission: isFixedMission,
+                      player: player,
+                      questSystem: questSystem,
+                      studyTimer: studyTimer,
+                      restSystem: restSystem,
+                    ),
                   ],
                 ),
               );
@@ -1464,7 +1732,266 @@ class QuestPage extends StatelessWidget {
       },
     );
   }
+
+  String _activeSessionStatus(StudyTimer timer) {
+    if (timer.isFinished) return 'TIMER COMPLETE — CLAIM YOUR XP';
+    if (timer.isRunning) return 'FOCUS MODE ACTIVE';
+    return 'PAUSED';
+  }
+
+  Widget _sessionMetaRow(
+    BuildContext context,
+    StudyTimer timer,
+    QuestSystem questSystem,
+  ) {
+    final c = SystemColors.of(context);
+    final questId = timer.activeQuestId;
+    if (questId == null) return const SizedBox.shrink();
+
+    final quest = questSystem.getQuestById(questId);
+    if (quest == null) return const SizedBox.shrink();
+
+    final difficulty = timer.getDifficulty(quest.durationMinutes);
+    final mpCost = timer.reservedMpAmount;
+    final canClaimAfterDeadline =
+        questSystem.wasTimerStartedBeforeDeadline(questId) &&
+            quest.deadline != null &&
+            DateTime.now().isAfter(quest.deadline!);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _metaChip(c, Icons.speed, difficulty, c.cyan),
+            const SizedBox(width: 8),
+            _metaChip(c, Icons.bolt, '$mpCost MP reserved', c.cyan),
+          ],
+        ),
+        if (canClaimAfterDeadline) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.amber.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: Colors.amber.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  color: Colors.amber,
+                  size: 14,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Deadline passed — but claim is still valid (started in time).',
+                  style: TextStyle(
+                    color: Colors.amber,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _metaChip(
+    SystemColors c,
+    IconData icon,
+    String label,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _questStateWidget({
+    required BuildContext context,
+    required StudyQuest quest,
+    required QuestState state,
+    required bool isActive,
+    required bool anotherActive,
+    required bool isFixedMission,
+    required PlayerSystem player,
+    required QuestSystem questSystem,
+    required StudyTimer studyTimer,
+    required RestSystem restSystem,
+  }) {
+    final c = SystemColors.of(context);
+
+    // COMPLETED
+    if (state == QuestState.completed) {
+      return Row(
+        children: [
+          const Icon(Icons.check_circle, color: Colors.green, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            'COMPLETED',
+            style: TextStyle(
+              color: Colors.green,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              letterSpacing: 1,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // MISSED
+    if (state == QuestState.missed) {
+      return Row(
+        children: [
+          const Icon(Icons.cancel, color: Colors.redAccent, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            'MISSION FAILED',
+            style: TextStyle(
+              color: Colors.redAccent,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              letterSpacing: 1,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // ACTIVE
+    if (isActive) {
+      return Row(
+        children: [
+          Icon(Icons.play_circle, color: c.cyan, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            'ACTIVE SESSION',
+            style: TextStyle(
+              color: c.cyan,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              letterSpacing: 1,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // UPCOMING
+    if (state == QuestState.upcoming) {
+      final availableAt = quest.availableFrom;
+      final availableLabel = availableAt == null
+          ? ''
+          : '${availableAt.hour % 12 == 0 ? 12 : availableAt.hour % 12}:'
+              '${availableAt.minute.toString().padLeft(2, '0')} '
+              '${availableAt.hour >= 12 ? 'PM' : 'AM'}';
+
+      return Text(
+        'UPCOMING • AVAILABLE AT $availableLabel',
+        style: TextStyle(
+          color: c.muted,
+          fontWeight: FontWeight.bold,
+          fontSize: 11,
+          letterSpacing: 0.5,
+        ),
+      );
+    }
+
+    // AVAILABLE → buttons
+    if (isFixedMission) {
+      return ElevatedButton(
+        onPressed: () async {
+          final xp = await questSystem.completeFixedMission(quest.id, player);
+          if (context.mounted && xp != null) {
+            final messenger = ScaffoldMessenger.of(context);
+            messenger.clearSnackBars();
+            messenger.showSnackBar(
+              SnackBar(content: Text('${quest.name} completed! +$xp XP')),
+            );
+          }
+        },
+        child: const Text('Complete'),
+      );
+    }
+
+    // TIMETABLE MISSION — Start Study
+    final canStart = questSystem.canStartTimer(quest.id);
+    final blockedReason = anotherActive
+        ? 'Another session active'
+        : restSystem.isShortRestActive
+            ? 'Short rest active'
+            : restSystem.isLongRestActive
+                ? 'Long rest active'
+                : !canStart.allowed
+                    ? canStart.reason
+                    : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ElevatedButton(
+          onPressed: blockedReason != null
+              ? null
+              : () async {
+                  final ok = await studyTimer.start(
+                    questId: quest.id,
+                    durationMinutes: quest.durationMinutes,
+                    player: player,
+                    questSystem: questSystem,
+                  );
+                  if (!ok && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Unable to start: insufficient MP or busy.'),
+                      ),
+                    );
+                  }
+                },
+          child: const Text('Start Study'),
+        ),
+        if (blockedReason != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            blockedReason,
+            style: TextStyle(color: c.muted, fontSize: 10),
+          ),
+        ],
+      ],
+    );
+  }
 }
+
+// ============================================================
+// STATUS PAGE
+// ============================================================
 
 class StatusPage extends StatelessWidget {
   final PlayerSystem player;
@@ -1512,6 +2039,8 @@ class StatusPage extends StatelessWidget {
                 'XP PROGRESS',
                 '${(player.xpProgress * 100).toStringAsFixed(0)}%',
               ),
+              _statusRow(context, 'HP', '${player.hp} / ${player.maxHp}'),
+              _statusRow(context, 'MP', '${player.mp} / ${player.maxMp}'),
               _statusRow(
                 context,
                 'TOTAL STUDY TIME',
@@ -1567,6 +2096,10 @@ class StatusPage extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// SETTINGS PAGE
+// ============================================================
 
 class SettingsPage extends StatelessWidget {
   final PlayerSystem player;
@@ -1689,7 +2222,7 @@ class SettingsPage extends StatelessWidget {
                 trailing: Switch(
                   value: isDarkMode,
                   onChanged: onDarkModeChanged,
-                  activeThumbColor: c.cyan,   // ✅ fixed deprecation
+                  activeThumbColor: c.cyan,
                 ),
               ),
 

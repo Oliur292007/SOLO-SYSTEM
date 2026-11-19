@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -32,7 +31,6 @@ class StudyQuest {
 
   int get xpReward {
     if (isOptional || durationMinutes <= 0) return 0;
-
     return (durationMinutes / 15).ceil() * 25;
   }
 
@@ -43,23 +41,31 @@ class StudyQuest {
 
   bool get isAvailable {
     final now = DateTime.now();
-
     if (availableFrom != null && now.isBefore(availableFrom!)) {
       return false;
     }
-
-    if (isOverdue) return false;
-
     return true;
   }
+}
+
+/// UI-friendly state of a quest.
+enum QuestState {
+  upcoming,   // not available yet
+  available,  // can start
+  active,     // timer running
+  completed,  // genuinely completed (XP awarded)
+  missed,     // missed (optional -> no penalty, mandatory -> penalty handled separately)
+  locked,     // deadline passed and missed in the past (already penalized)
 }
 
 class QuestSystem extends ChangeNotifier {
   static const String _dateKey = 'quest_date';
   static const String _completedKey = 'completed_quests';
+  static const String _missedKey = 'missed_quests';
   static const String _snapshotKey = 'quest_snapshot';
   static const String _penaltyKey = 'penalty_until';
   static const String _nightLockKey = 'night_lock_active';
+  static const String _timerStartsKey = 'quest_timer_starts';
 
   static const Duration penaltyDuration = Duration(hours: 4);
 
@@ -73,7 +79,17 @@ class QuestSystem extends ChangeNotifier {
     timetableSystem.addListener(_onTimetableChanged);
   }
 
+  /// Quests that were actually completed (XP awarded).
   final Set<String> completedQuestIds = {};
+
+  /// Optional quests that were missed. These do NOT give penalty,
+  /// but must be excluded from "COMPLETED" UI.
+  final Set<String> missedQuestIds = {};
+
+  /// Timer start time per quest (epoch millis). Used for deadline validation:
+  /// if a timer was legally started before deadline, claim is allowed even
+  /// after deadline.
+  final Map<String, int> _timerStarts = {};
 
   bool isLoaded = false;
   bool isNightLockActive = false;
@@ -91,7 +107,6 @@ class QuestSystem extends ChangeNotifier {
 
   String get todayKey {
     final now = DateTime.now();
-
     return '${now.year}-'
         '${now.month.toString().padLeft(2, '0')}-'
         '${now.day.toString().padLeft(2, '0')}';
@@ -99,14 +114,7 @@ class QuestSystem extends ChangeNotifier {
 
   DateTime _dateAt(int hour, int minute) {
     final now = DateTime.now();
-
-    return DateTime(
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
-    );
+    return DateTime(now.year, now.month, now.day, hour, minute);
   }
 
   // QUEST LIST
@@ -131,24 +139,13 @@ class QuestSystem extends ChangeNotifier {
 
     final now = DateTime.now();
 
-    for (final schedule
-        in timetableSystem.getSchedulesForDay(now.weekday)) {
+    for (final schedule in timetableSystem.getSchedulesForDay(now.weekday)) {
       final timeParts = schedule.startTime.split(':');
-
       final hour = int.parse(timeParts[0]);
       final minute = int.parse(timeParts[1]);
 
-      final start = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        hour,
-        minute,
-      );
-
-      final deadline = start.add(
-        Duration(minutes: schedule.durationMinutes),
-      );
+      final start = DateTime(now.year, now.month, now.day, hour, minute);
+      final deadline = start.add(Duration(minutes: schedule.durationMinutes));
 
       result.add(
         StudyQuest(
@@ -182,38 +179,110 @@ class QuestSystem extends ChangeNotifier {
   // PROGRESS
 
   int get totalQuests => quests.length;
-
   int get totalCount => totalQuests;
-
   int get completedCount => completedQuestIds.length;
-
   int get remainingCount => totalQuests - completedCount;
 
   double get progress {
     if (totalQuests == 0) return 0;
-
-    return (completedCount / totalQuests)
-        .clamp(0.0, 1.0)
-        .toDouble();
+    return (completedCount / totalQuests).clamp(0.0, 1.0).toDouble();
   }
 
-  bool isCompleted(String questId) {
-    return completedQuestIds.contains(questId);
-  }
+  bool isCompleted(String questId) => completedQuestIds.contains(questId);
+
+  bool isMissed(String questId) => missedQuestIds.contains(questId);
 
   StudyQuest? getQuestById(String questId) {
     for (final quest in quests) {
       if (quest.id == questId) return quest;
     }
-
     return null;
+  }
+
+  /// Timer start time for a quest (null = never started today).
+  DateTime? timerStartedAt(String questId) {
+    final ms = _timerStarts[questId];
+    if (ms == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  /// Was this quest's timer started legally on or before its deadline?
+  bool wasTimerStartedBeforeDeadline(String questId) {
+    final quest = getQuestById(questId);
+    if (quest == null || quest.deadline == null) return false;
+
+    final startedAt = timerStartedAt(questId);
+    if (startedAt == null) return false;
+
+    return !startedAt.isAfter(quest.deadline!);
+  }
+
+  /// Called by StudyTimer when a timer starts.
+  Future<void> registerTimerStart(String questId, DateTime startedAt) async {
+    _timerStarts[questId] = startedAt.millisecondsSinceEpoch;
+
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = _timerStarts.map(
+      (key, value) => MapEntry(key, value),
+    );
+    await prefs.setString(_timerStartsKey, jsonEncode(encoded));
+  }
+
+  /// Can the user start the timer for this quest now?
+  /// Returns (bool allowed, String? reason).
+  ({bool allowed, String? reason}) canStartTimer(String questId) {
+    if (!isLoaded) {
+      return (allowed: false, reason: 'System not loaded yet.');
+    }
+
+    final quest = getQuestById(questId);
+    if (quest == null) {
+      return (allowed: false, reason: 'Quest not found.');
+    }
+
+    if (isCompleted(questId)) {
+      return (allowed: false, reason: 'Already completed.');
+    }
+
+    final now = DateTime.now();
+
+    if (quest.availableFrom != null && now.isBefore(quest.availableFrom!)) {
+      return (allowed: false, reason: 'Mission not available yet.');
+    }
+
+    if (quest.deadline != null && now.isAfter(quest.deadline!)) {
+      return (allowed: false, reason: 'Deadline has passed.');
+    }
+
+    return (allowed: true, reason: null);
+  }
+
+  /// UI helper: which state is this quest in?
+  QuestState getQuestState(String questId) {
+    final quest = getQuestById(questId);
+    if (quest == null) return QuestState.locked;
+
+    if (isCompleted(questId)) return QuestState.completed;
+
+    if (isMissed(questId)) return QuestState.missed;
+
+    final now = DateTime.now();
+
+    if (quest.deadline != null && now.isAfter(quest.deadline!)) {
+      return QuestState.missed;
+    }
+
+    if (quest.availableFrom != null && now.isBefore(quest.availableFrom!)) {
+      return QuestState.upcoming;
+    }
+
+    return QuestState.available;
   }
 
   // LOCK STATUS
 
   bool get isPenaltyActive {
     if (penaltyUntil == null) return false;
-
     return DateTime.now().isBefore(penaltyUntil!);
   }
 
@@ -224,17 +293,12 @@ class QuestSystem extends ChangeNotifier {
   String get lockStatus {
     if (isPenaltyActive) return 'PENALTY ACTIVE';
     if (isNightLockActive) return 'NIGHT LOCK ACTIVE';
-
     return 'UNLOCKED';
   }
 
   Duration get penaltyRemaining {
-    if (!isPenaltyActive || penaltyUntil == null) {
-      return Duration.zero;
-    }
-
+    if (!isPenaltyActive || penaltyUntil == null) return Duration.zero;
     final remaining = penaltyUntil!.difference(DateTime.now());
-
     return remaining.isNegative ? Duration.zero : remaining;
   }
 
@@ -249,20 +313,36 @@ class QuestSystem extends ChangeNotifier {
 
     final savedDate = prefs.getString(_dateKey);
     final savedCompleted = prefs.getStringList(_completedKey);
+    final savedMissed = prefs.getStringList(_missedKey);
 
     completedQuestIds
       ..clear()
       ..addAll(savedCompleted ?? []);
 
-    final savedPenalty = prefs.getInt(_penaltyKey);
+    missedQuestIds
+      ..clear()
+      ..addAll(savedMissed ?? []);
 
-    if (savedPenalty != null) {
-      penaltyUntil =
-          DateTime.fromMillisecondsSinceEpoch(savedPenalty);
+    // Load timer starts map
+    _timerStarts.clear();
+    final timerStartsRaw = prefs.getString(_timerStartsKey);
+    if (timerStartsRaw != null && timerStartsRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(timerStartsRaw) as Map<String, dynamic>;
+        decoded.forEach((key, value) {
+          _timerStarts[key] = (value as num).toInt();
+        });
+      } catch (_) {
+        _timerStarts.clear();
+      }
     }
 
-    isNightLockActive =
-        prefs.getBool(_nightLockKey) ?? false;
+    final savedPenalty = prefs.getInt(_penaltyKey);
+    if (savedPenalty != null) {
+      penaltyUntil = DateTime.fromMillisecondsSinceEpoch(savedPenalty);
+    }
+
+    isNightLockActive = prefs.getBool(_nightLockKey) ?? false;
 
     final snapshotData = prefs.getString(_snapshotKey);
 
@@ -270,14 +350,18 @@ class QuestSystem extends ChangeNotifier {
       _loadedDateKey = todayKey;
 
       completedQuestIds.clear();
+      missedQuestIds.clear();
+      _timerStarts.clear();
 
       final now = DateTime.now();
-
       if (now.isAfter(_dateAt(8, 30))) {
+        // Wakeup missed on first-ever launch after 8:30.
         completedQuestIds.add('wakeup');
       }
 
       await _saveCompleted();
+      await _saveMissed();
+      await _saveTimerStarts();
       await _saveDate();
       await _saveQuestSnapshot();
     } else if (savedDate != todayKey) {
@@ -286,15 +370,18 @@ class QuestSystem extends ChangeNotifier {
       await _evaluatePreviousDay(snapshotData);
 
       completedQuestIds.clear();
+      missedQuestIds.clear();
+      _timerStarts.clear();
 
       _loadedDateKey = todayKey;
 
       await _saveCompleted();
+      await _saveMissed();
+      await _saveTimerStarts();
       await _saveDate();
       await _saveQuestSnapshot();
     } else {
       _loadedDateKey = todayKey;
-
       if (snapshotData == null || snapshotData.isEmpty) {
         await _saveQuestSnapshot();
       }
@@ -303,9 +390,7 @@ class QuestSystem extends ChangeNotifier {
     isLoaded = true;
 
     await _checkDeadlines();
-
     _startDeadlineChecker();
-
     notifyListeners();
   }
 
@@ -317,12 +402,9 @@ class QuestSystem extends ChangeNotifier {
   ) async {
     if (!isLoaded) return null;
 
-    if (questId != 'wakeup' && questId != 'sleeping') {
-      return null;
-    }
+    if (questId != 'wakeup' && questId != 'sleeping') return null;
 
     final quest = getQuestById(questId);
-
     if (quest == null) return null;
     if (isCompleted(questId)) return null;
     if (!quest.isAvailable) return null;
@@ -339,12 +421,24 @@ class QuestSystem extends ChangeNotifier {
     if (!isLoaded) return null;
 
     final quest = getQuestById(questId);
-
     if (quest == null) return null;
     if (!quest.requiresTimer) return null;
     if (isCompleted(questId)) return null;
+    if (isMissed(questId)) return null;
+
+    // Not started before availableFrom? Block.
     if (quest.availableFrom != null &&
         DateTime.now().isBefore(quest.availableFrom!)) {
+      return null;
+    }
+
+    // Deadline enforcement:
+    // Allow claim AFTER deadline ONLY if timer was legally started
+    // before the deadline. Otherwise, block.
+    if (quest.deadline != null &&
+        DateTime.now().isAfter(quest.deadline!) &&
+        !wasTimerStartedBeforeDeadline(questId)) {
+      debugPrint('CLAIM BLOCKED: deadline passed and timer not started in time.');
       return null;
     }
 
@@ -358,23 +452,23 @@ class QuestSystem extends ChangeNotifier {
     PlayerSystem player,
   ) async {
     if (isCompleted(quest.id)) return null;
+    if (isMissed(quest.id)) return null;
 
-    // START LONG REST BEFORE MARKING SLEEPING COMPLETE.
-    // If another Rest is active, Sleeping cannot complete yet.
     if (quest.id == 'sleeping') {
       final started = await restSystem.startLongRest();
-
       if (!started) return null;
     }
 
-    // WAKEUP ENDS LONG REST.
     if (quest.id == 'wakeup') {
       await restSystem.endLongRest();
     }
 
     completedQuestIds.add(quest.id);
+    // If it was previously marked missed (e.g., optional), clear it.
+    missedQuestIds.remove(quest.id);
 
     await _saveCompleted();
+    await _saveMissed();
 
     if (quest.id == 'sleeping') {
       isNightLockActive = true;
@@ -387,13 +481,11 @@ class QuestSystem extends ChangeNotifier {
     }
 
     final earnedXp = quest.xpReward;
-
     if (earnedXp > 0) {
       await player.addXp(earnedXp);
     }
 
     notifyListeners();
-
     return earnedXp;
   }
 
@@ -401,12 +493,10 @@ class QuestSystem extends ChangeNotifier {
 
   void _startDeadlineChecker() {
     _deadlineTimer?.cancel();
-
     _deadlineTimer = Timer.periodic(
       const Duration(seconds: 15),
       (_) async {
         if (!isLoaded) return;
-
         await _checkDeadlines();
       },
     );
@@ -414,7 +504,6 @@ class QuestSystem extends ChangeNotifier {
 
   Future<void> _checkDeadlines() async {
     if (_isCheckingDeadlines || !isLoaded) return;
-
     _isCheckingDeadlines = true;
 
     try {
@@ -424,54 +513,51 @@ class QuestSystem extends ChangeNotifier {
 
       for (final quest in quests) {
         if (isCompleted(quest.id)) continue;
+        if (isMissed(quest.id)) continue;
         if (quest.deadline == null) continue;
 
         if (!now.isAfter(quest.deadline!)) continue;
 
-        if (quest.isOptional) {
-          completedQuestIds.add(quest.id);
-          await _saveCompleted();
+        // If timer was legally started before deadline, DO NOT mark missed.
+        // The user can still claim (per spec).
+        if (quest.requiresTimer && wasTimerStartedBeforeDeadline(quest.id)) {
           continue;
         }
 
+        // Optional mission: miss = no penalty, but mark as missed.
+        if (quest.isOptional) {
+          missedQuestIds.add(quest.id);
+          await _saveMissed();
+          continue;
+        }
+
+        // Sleeping miss: Night Lock, no 4h penalty, no long rest.
         if (quest.id == 'sleeping') {
           isNightLockActive = true;
-
-          completedQuestIds.add(quest.id);
-
+          missedQuestIds.add(quest.id);
           await _saveNightLock();
-          await _saveCompleted();
-
-          // Missed Sleeping does not start Long Rest.
+          await _saveMissed();
           continue;
         }
 
+        // Wakeup miss: end long rest at 8:30, clear night lock, start penalty.
         if (quest.id == 'wakeup') {
-          // End Long Rest at exactly 8:30 AM if Wakeup is missed.
-          await restSystem.endLongRest(
-            endedAt: quest.deadline!,
-          );
-
+          await restSystem.endLongRest(endedAt: quest.deadline!);
           isNightLockActive = false;
           await _saveNightLock();
-
           await _startPenalty(quest.deadline!);
-
-          completedQuestIds.add(quest.id);
-          await _saveCompleted();
-
+          missedQuestIds.add(quest.id);
+          await _saveMissed();
           continue;
         }
 
-        // Other missed mandatory missions.
+        // Other mandatory timer missions: penalty.
         await _startPenalty(quest.deadline!);
-
-        completedQuestIds.add(quest.id);
-        await _saveCompleted();
+        missedQuestIds.add(quest.id);
+        await _saveMissed();
       }
 
       await _savePenalty();
-
       notifyListeners();
     } finally {
       _isCheckingDeadlines = false;
@@ -484,57 +570,52 @@ class QuestSystem extends ChangeNotifier {
     if (_loadedDateKey == todayKey) return;
 
     final prefs = await SharedPreferences.getInstance();
-
     final snapshotData = prefs.getString(_snapshotKey);
 
     await _evaluatePreviousDay(snapshotData);
 
     completedQuestIds.clear();
+    missedQuestIds.clear();
+    _timerStarts.clear();
 
     _loadedDateKey = todayKey;
 
     await _saveCompleted();
+    await _saveMissed();
+    await _saveTimerStarts();
     await _saveDate();
     await _saveQuestSnapshot();
   }
 
   // EVALUATE PREVIOUS DAY
 
-  Future<void> _evaluatePreviousDay(
-    String? snapshotData,
-  ) async {
-    if (snapshotData == null || snapshotData.isEmpty) {
-      return;
-    }
+  Future<void> _evaluatePreviousDay(String? snapshotData) async {
+    if (snapshotData == null || snapshotData.isEmpty) return;
 
     try {
       final List<dynamic> decoded = jsonDecode(snapshotData);
-
       final List<Map<String, dynamic>> previousQuests =
-          decoded
-              .map(
-                (item) => Map<String, dynamic>.from(item),
-              )
-              .toList();
+          decoded.map((item) => Map<String, dynamic>.from(item)).toList();
 
       previousQuests.sort((a, b) {
         final aDeadline = a['deadline'] as int;
         final bDeadline = b['deadline'] as int;
-
         return aDeadline.compareTo(bDeadline);
       });
 
       for (final item in previousQuests) {
         final id = item['id'] as String;
-
-        final deadline = DateTime.fromMillisecondsSinceEpoch(
-          item['deadline'] as int,
-        );
-
+        final deadline =
+            DateTime.fromMillisecondsSinceEpoch(item['deadline'] as int);
         final isOptional = item['optional'] as bool? ?? false;
+        final timerStarted =
+            (item['timerStarted'] as bool?) ?? false;
 
         if (completedQuestIds.contains(id)) continue;
-        if (isOptional) continue;
+        if (isOptional) continue; // Optional miss => no penalty
+
+        // Timer legally started before deadline? No penalty.
+        if (timerStarted) continue;
 
         if (id == 'sleeping') {
           isNightLockActive = true;
@@ -543,10 +624,8 @@ class QuestSystem extends ChangeNotifier {
         }
 
         if (id == 'wakeup') {
-          // RestSystem handles the saved Long Rest deadline.
           isNightLockActive = false;
           await _saveNightLock();
-
           await _startPenalty(deadline);
           continue;
         }
@@ -554,7 +633,7 @@ class QuestSystem extends ChangeNotifier {
         await _startPenalty(deadline);
       }
     } catch (_) {
-      // Ignore invalid or corrupted snapshot data.
+      // Ignore corrupted snapshot.
     }
 
     await _savePenalty();
@@ -562,24 +641,13 @@ class QuestSystem extends ChangeNotifier {
 
   // PENALTY
 
-  Future<void> _startPenalty(
-    DateTime missedDeadline,
-  ) async {
-    final newPenaltyEnd = missedDeadline.add(
-      penaltyDuration,
-    );
+  Future<void> _startPenalty(DateTime missedDeadline) async {
+    final newPenaltyEnd = missedDeadline.add(penaltyDuration);
 
-    if (!DateTime.now().isBefore(newPenaltyEnd)) {
-      return;
-    }
-
-    if (penaltyUntil != null &&
-        penaltyUntil!.isAfter(newPenaltyEnd)) {
-      return;
-    }
+    if (!DateTime.now().isBefore(newPenaltyEnd)) return;
+    if (penaltyUntil != null && penaltyUntil!.isAfter(newPenaltyEnd)) return;
 
     penaltyUntil = newPenaltyEnd;
-
     await _savePenalty();
   }
 
@@ -587,12 +655,10 @@ class QuestSystem extends ChangeNotifier {
 
   Future<void> _saveQuestSnapshot() async {
     if (_isSavingSnapshot) return;
-
     _isSavingSnapshot = true;
 
     try {
       final prefs = await SharedPreferences.getInstance();
-
       final oldData = prefs.getString(_snapshotKey);
 
       final Map<String, Map<String, dynamic>> snapshot = {};
@@ -600,24 +666,18 @@ class QuestSystem extends ChangeNotifier {
       if (oldData != null && oldData.isNotEmpty) {
         try {
           final List<dynamic> oldList = jsonDecode(oldData);
-
           for (final entry in oldList) {
             final item = Map<String, dynamic>.from(entry);
-
             final id = item['id'] as String;
-
-            final deadline = DateTime.fromMillisecondsSinceEpoch(
-              item['deadline'] as int,
-            );
-
-            final alreadyCompleted =
-                completedQuestIds.contains(id);
-
-            final isOptional =
-                item['optional'] as bool? ?? false;
+            final deadline =
+                DateTime.fromMillisecondsSinceEpoch(item['deadline'] as int);
+            final alreadyCompleted = completedQuestIds.contains(id);
+            final isOptional = item['optional'] as bool? ?? false;
+            final timerStarted = (item['timerStarted'] as bool?) ?? false;
 
             if (!alreadyCompleted &&
                 !isOptional &&
+                !timerStarted &&
                 DateTime.now().isAfter(deadline)) {
               snapshot[id] = item;
             }
@@ -630,13 +690,13 @@ class QuestSystem extends ChangeNotifier {
       for (final quest in quests) {
         if (quest.deadline == null) continue;
         if (isCompleted(quest.id)) continue;
-
         if (snapshot.containsKey(quest.id)) continue;
 
         snapshot[quest.id] = {
           'id': quest.id,
           'deadline': quest.deadline!.millisecondsSinceEpoch,
           'optional': quest.isOptional,
+          'timerStarted': wasTimerStartedBeforeDeadline(quest.id),
         };
       }
 
@@ -653,14 +713,12 @@ class QuestSystem extends ChangeNotifier {
 
   void _onTimetableChanged() {
     if (!isLoaded) return;
-
     _handleTimetableChange();
   }
 
   Future<void> _handleTimetableChange() async {
     await _saveQuestSnapshot();
     await _checkDeadlines();
-
     notifyListeners();
   }
 
@@ -668,25 +726,30 @@ class QuestSystem extends ChangeNotifier {
 
   Future<void> _saveCompleted() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_completedKey, completedQuestIds.toList());
+  }
 
-    await prefs.setStringList(
-      _completedKey,
-      completedQuestIds.toList(),
-    );
+  Future<void> _saveMissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_missedKey, missedQuestIds.toList());
+  }
+
+  Future<void> _saveTimerStarts() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_timerStarts.isEmpty) {
+      await prefs.remove(_timerStartsKey);
+    } else {
+      await prefs.setString(_timerStartsKey, jsonEncode(_timerStarts));
+    }
   }
 
   Future<void> _saveDate() async {
     final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setString(
-      _dateKey,
-      _loadedDateKey,
-    );
+    await prefs.setString(_dateKey, _loadedDateKey);
   }
 
   Future<void> _savePenalty() async {
     final prefs = await SharedPreferences.getInstance();
-
     if (penaltyUntil != null) {
       await prefs.setInt(
         _penaltyKey,
@@ -699,21 +762,13 @@ class QuestSystem extends ChangeNotifier {
 
   Future<void> _saveNightLock() async {
     final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setBool(
-      _nightLockKey,
-      isNightLockActive,
-    );
+    await prefs.setBool(_nightLockKey, isNightLockActive);
   }
 
   @override
   void dispose() {
     _deadlineTimer?.cancel();
-
-    timetableSystem.removeListener(
-      _onTimetableChanged,
-    );
-
+    timetableSystem.removeListener(_onTimetableChanged);
     super.dispose();
   }
 }

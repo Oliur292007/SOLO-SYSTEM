@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -34,30 +33,28 @@ class RestSystem extends ChangeNotifier {
 
   bool isLoaded = false;
 
-  // REST STATUS
+  // Race-prevention flag for short rest recovery.
+  bool _isProcessingShortRest = false;
+
+  // ============================================================
+  // STATUS GETTERS
+  // ============================================================
 
   bool get isShortRestActive => _shortRestStart != null;
-
   bool get isLongRestActive => _longRestStart != null;
 
-  // SHORT REST ELAPSED TIME
+  // ============================================================
+  // SHORT REST TIME
+  // ============================================================
 
   int get elapsedShortRestMinutes {
     if (_shortRestStart == null) return 0;
-
-    return DateTime.now()
-        .difference(_shortRestStart!)
-        .inMinutes;
+    return DateTime.now().difference(_shortRestStart!).inMinutes;
   }
 
   int get nextRecoveryMinutes {
-    if (_shortRestStart == null) {
-      return recoveryIntervalMinutes;
-    }
-
-    final remainder =
-        elapsedShortRestMinutes % recoveryIntervalMinutes;
-
+    if (_shortRestStart == null) return recoveryIntervalMinutes;
+    final remainder = elapsedShortRestMinutes % recoveryIntervalMinutes;
     return remainder == 0
         ? recoveryIntervalMinutes
         : recoveryIntervalMinutes - remainder;
@@ -65,87 +62,68 @@ class RestSystem extends ChangeNotifier {
 
   Duration get shortRestTimeToNextRecovery {
     if (_shortRestStart == null) return Duration.zero;
-
     final elapsed = DateTime.now().difference(_shortRestStart!);
     final interval = Duration(minutes: recoveryIntervalMinutes);
-
     final elapsedSeconds = elapsed.inSeconds;
     final intervalSeconds = interval.inSeconds;
-
     final remainingSeconds =
         intervalSeconds - (elapsedSeconds % intervalSeconds);
-
     return Duration(seconds: remainingSeconds);
   }
 
+  // ============================================================
+  // LONG REST TIME
+  // ============================================================
+
   int get remainingLongRestMinutes {
     if (_longRestStart == null) return 0;
-
     final remaining = _longRestDeadline.difference(DateTime.now());
-
     return remaining.isNegative ? 0 : remaining.inMinutes;
   }
 
-  // LONG REST ELAPSED TIME
-
   int get elapsedLongRestMinutes {
     if (_longRestStart == null) return 0;
-
     final end = _longRestDeadline;
-
-    final now = DateTime.now().isAfter(end)
-        ? end
-        : DateTime.now();
-
+    final now = DateTime.now().isAfter(end) ? end : DateTime.now();
     return now.difference(_longRestStart!).inMinutes;
   }
 
-  // WAKEUP DEADLINE: NEXT DAY 8:30 AM
-
+  /// Wakeup deadline = next day 8:30 AM.
   DateTime get _longRestDeadline {
     final start = _longRestStart!;
-
-    return DateTime(
-      start.year,
-      start.month,
-      start.day + 1,
-      8,
-      30,
-    );
+    return DateTime(start.year, start.month, start.day + 1, 8, 30);
   }
 
-  // LOAD REST DATA
+  // ============================================================
+  // LOAD
+  // ============================================================
 
   Future<void> loadRest() async {
     if (!player.isLoaded) {
-      throw StateError('PlayerSystem must be loaded first.');
+      throw StateError('PlayerSystem must be loaded before RestSystem.');
     }
 
     final prefs = await SharedPreferences.getInstance();
 
     final shortTimestamp = prefs.getInt(_shortRestStartKey);
-
-    _appliedIntervals =
-        prefs.getInt(_shortRestAppliedKey) ?? 0;
+    _appliedIntervals = prefs.getInt(_shortRestAppliedKey) ?? 0;
 
     final longTimestamp = prefs.getInt(_longRestStartKey);
 
     if (shortTimestamp != null) {
       _shortRestStart =
           DateTime.fromMillisecondsSinceEpoch(shortTimestamp);
-
       await _processShortRestRecovery();
     }
 
     if (longTimestamp != null) {
-      _longRestStart =
-          DateTime.fromMillisecondsSinceEpoch(longTimestamp);
+      _longRestStart = DateTime.fromMillisecondsSinceEpoch(longTimestamp);
 
-      if (DateTime.now().isAfter(_longRestDeadline) ||
-          DateTime.now().isAtSameMomentAs(_longRestDeadline)) {
-        await endLongRest(
-          endedAt: _longRestDeadline,
-        );
+      final now = DateTime.now();
+      final deadline = _longRestDeadline;
+
+      if (now.isAfter(deadline) || now.isAtSameMomentAs(deadline)) {
+        await endLongRest(endedAt: deadline);
       }
     }
 
@@ -158,14 +136,13 @@ class RestSystem extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ============================================================
   // START SHORT REST
+  // ============================================================
 
   Future<bool> startShortRest() async {
-    if (!isLoaded ||
-        isShortRestActive ||
-        isLongRestActive) {
-      return false;
-    }
+    if (!isLoaded) return false;
+    if (isShortRestActive || isLongRestActive) return false;
 
     final prefs = await SharedPreferences.getInstance();
 
@@ -176,133 +153,103 @@ class RestSystem extends ChangeNotifier {
       _shortRestStartKey,
       _shortRestStart!.millisecondsSinceEpoch,
     );
-
     await prefs.setInt(_shortRestAppliedKey, 0);
 
     _startTicker();
-
     notifyListeners();
-
     return true;
   }
 
+  // ============================================================
   // STOP SHORT REST
+  // ============================================================
 
   Future<void> stopShortRest() async {
     if (!isShortRestActive) return;
 
+    // Apply any pending recovery first.
     await _processShortRestRecovery();
 
     _shortRestStart = null;
     _appliedIntervals = 0;
 
     final prefs = await SharedPreferences.getInstance();
-
     await prefs.remove(_shortRestStartKey);
     await prefs.remove(_shortRestAppliedKey);
 
     _stopTickerIfIdle();
-
     notifyListeners();
   }
 
+  // ============================================================
   // START LONG REST
-  // Call this after successful Sleeping Mission completion.
+  // Called after successful Sleeping Mission.
+  // ============================================================
 
   Future<bool> startLongRest() async {
-    if (!isLoaded ||
-        isShortRestActive ||
-        isLongRestActive) {
-      return false;
-    }
+    if (!isLoaded) return false;
+    if (isShortRestActive || isLongRestActive) return false;
 
     final prefs = await SharedPreferences.getInstance();
 
     _longRestStart = DateTime.now();
-
     await prefs.setInt(
       _longRestStartKey,
       _longRestStart!.millisecondsSinceEpoch,
     );
 
     _startTicker();
-
     notifyListeners();
-
     return true;
   }
 
+  // ============================================================
   // END LONG REST
-  // Call this after Wakeup completion.
-  // If Wakeup is missed, it ends automatically at 8:30 AM.
+  // Called after Wakeup completion, or auto at 8:30 AM.
+  // ============================================================
 
   Future<void> endLongRest({DateTime? endedAt}) async {
     if (!isLongRestActive) return;
 
     final start = _longRestStart!;
-
     DateTime end = endedAt ?? DateTime.now();
 
     final deadline = _longRestDeadline;
 
-    if (end.isAfter(deadline)) {
-      end = deadline;
-    }
+    if (end.isAfter(deadline)) end = deadline;
+    if (end.isBefore(start)) end = start;
 
-    if (end.isBefore(start)) {
-      end = start;
-    }
+    final durationMinutes = end.difference(start).inMinutes;
 
-    final durationMinutes =
-        end.difference(start).inMinutes;
-
-    // BASE RECOVERY: 10% PER HOUR
-
+    // BASE RECOVERY: 10% per hour.
     final baseHpRecovery =
-        (player.maxHp *
-                hourlyRecoveryRate *
-                durationMinutes /
-                60)
-            .floor();
-
+        (player.maxHp * hourlyRecoveryRate * durationMinutes / 60).floor();
     final baseMpRecovery =
-        (player.maxMp *
-                hourlyRecoveryRate *
-                durationMinutes /
-                60)
-            .floor();
+        (player.maxMp * hourlyRecoveryRate * durationMinutes / 60).floor();
 
-    // SLEEPING BONUS: EXTRA 25%
+    // SLEEPING BONUS: extra 25% of base.
+    final hpBonus = (baseHpRecovery * sleepingBonusRate).round();
+    final mpBonus = (baseMpRecovery * sleepingBonusRate).round();
 
-    final hpBonus =
-        (baseHpRecovery * sleepingBonusRate).round();
+    final totalHpRecovery = baseHpRecovery + hpBonus;
+    final totalMpRecovery = baseMpRecovery + mpBonus;
 
-    final mpBonus =
-        (baseMpRecovery * sleepingBonusRate).round();
-
-    final totalHpRecovery =
-        baseHpRecovery + hpBonus;
-
-    final totalMpRecovery =
-        baseMpRecovery + mpBonus;
-
-    // CLEAR ACTIVE REST BEFORE APPLYING RECOVERY
-
+    // CLEAR ACTIVE REST BEFORE APPLYING RECOVERY.
     _longRestStart = null;
 
     final prefs = await SharedPreferences.getInstance();
-
     await prefs.remove(_longRestStartKey);
 
-    await player.recoverHp(totalHpRecovery);
-    await player.recoverMp(totalMpRecovery);
+    if (totalHpRecovery > 0) await player.recoverHp(totalHpRecovery);
+    if (totalMpRecovery > 0) await player.recoverMp(totalMpRecovery);
 
     _stopTickerIfIdle();
-
     notifyListeners();
   }
 
-  // START / MAINTAIN TIMER
+  // ============================================================
+  // TICKER
+  // ============================================================
 
   void _startTicker() {
     _timer?.cancel();
@@ -315,11 +262,10 @@ class RestSystem extends ChangeNotifier {
         }
 
         if (isLongRestActive) {
-          if (DateTime.now().isAfter(_longRestDeadline) ||
-              DateTime.now().isAtSameMomentAs(_longRestDeadline)) {
-            await endLongRest(
-              endedAt: _longRestDeadline,
-            );
+          final now = DateTime.now();
+          final deadline = _longRestDeadline;
+          if (now.isAfter(deadline) || now.isAtSameMomentAs(deadline)) {
+            await endLongRest(endedAt: deadline);
           }
         }
 
@@ -328,46 +274,46 @@ class RestSystem extends ChangeNotifier {
     );
   }
 
-  // PROCESS SHORT REST RECOVERY
+  // ============================================================
+  // SHORT REST RECOVERY (atomic)
+  // ============================================================
 
   Future<void> _processShortRestRecovery() async {
     if (_shortRestStart == null) return;
+    if (_isProcessingShortRest) return; // race guard
 
-    final elapsed =
-        DateTime.now().difference(_shortRestStart!);
+    _isProcessingShortRest = true;
 
-    final completedIntervals =
-        elapsed.inMinutes ~/ recoveryIntervalMinutes;
+    try {
+      final elapsed = DateTime.now().difference(_shortRestStart!);
+      final completedIntervals =
+          elapsed.inMinutes ~/ recoveryIntervalMinutes;
 
-    if (completedIntervals <= _appliedIntervals) return;
+      if (completedIntervals <= _appliedIntervals) return;
 
-    final newIntervals =
-        completedIntervals - _appliedIntervals;
+      final newIntervals = completedIntervals - _appliedIntervals;
+      final hpRecovery = newIntervals * hpRecoveryPerInterval;
+      final mpRecovery = newIntervals * mpRecoveryPerInterval;
 
-    final hpRecovery =
-        newIntervals * hpRecoveryPerInterval;
+      // Apply recovery FIRST. If it fails, do not advance intervals.
+      await player.recoverHp(hpRecovery);
+      await player.recoverMp(mpRecovery);
 
-    final mpRecovery =
-        newIntervals * mpRecoveryPerInterval;
+      _appliedIntervals = completedIntervals;
 
-    _appliedIntervals = completedIntervals;
-
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setInt(
-      _shortRestAppliedKey,
-      _appliedIntervals,
-    );
-
-    await player.recoverHp(hpRecovery);
-    await player.recoverMp(mpRecovery);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_shortRestAppliedKey, _appliedIntervals);
+    } finally {
+      _isProcessingShortRest = false;
+    }
   }
 
-  // STOP TIMER IF NO REST IS ACTIVE
+  // ============================================================
+  // STOP TICKER IF IDLE
+  // ============================================================
 
   void _stopTickerIfIdle() {
     if (isShortRestActive || isLongRestActive) return;
-
     _timer?.cancel();
     _timer = null;
   }
@@ -375,6 +321,7 @@ class RestSystem extends ChangeNotifier {
   @override
   void dispose() {
     _timer?.cancel();
+    _timer = null;
     super.dispose();
   }
 }

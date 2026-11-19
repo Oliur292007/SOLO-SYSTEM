@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'timetable_system.dart';
 
@@ -20,8 +19,7 @@ class _TimetablePageState extends State<TimetablePage> {
   static const Color cyan = Color(0xFF00E5FF);
   static const Color blue = Color(0xFF00BFFF);
 
-  Color get textColor =>
-      Theme.of(context).colorScheme.onSurface;
+  Color get textColor => Theme.of(context).colorScheme.onSurface;
 
   Color get mutedColor =>
       Theme.of(context).brightness == Brightness.dark
@@ -38,6 +36,7 @@ class _TimetablePageState extends State<TimetablePage> {
     int day = existing?.dayOfWeek ?? selectedDay;
     int duration = existing?.durationMinutes ?? 60;
     bool isOptional = existing?.isOptional ?? false;
+    bool isSaving = false;
 
     TimeOfDay startTime = existing != null
         ? TimeOfDay(
@@ -46,18 +45,92 @@ class _TimetablePageState extends State<TimetablePage> {
           )
         : const TimeOfDay(hour: 9, minute: 0);
 
-    final c = Theme.of(context).colorScheme;
-
     await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            Future<void> handleSave() async {
+              if (isSaving) return;
+
+              final subject = subjectController.text.trim();
+
+              if (subject.isEmpty) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(content: Text('Enter a subject name')),
+                );
+                return;
+              }
+
+              if (isOptional && day != 5) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Optional schedules are only allowed on Friday.',
+                    ),
+                  ),
+                );
+                return;
+              }
+
+              final formattedTime =
+                  '${startTime.hour.toString().padLeft(2, '0')}:'
+                  '${startTime.minute.toString().padLeft(2, '0')}';
+
+              setDialogState(() => isSaving = true);
+
+              bool success;
+              String? errorMessage;
+
+              if (existing == null) {
+                success = await widget.timetableSystem.addSchedule(
+                  dayOfWeek: day,
+                  subject: subject,
+                  startTime: formattedTime,
+                  durationMinutes: duration,
+                  isOptional: isOptional,
+                );
+                if (!success) {
+                  errorMessage =
+                      'A schedule with this subject & time already exists on this day.';
+                }
+              } else {
+                success = await widget.timetableSystem.updateSchedule(
+                  existing.id,
+                  dayOfWeek: day,
+                  subject: subject,
+                  startTime: formattedTime,
+                  durationMinutes: duration,
+                  isOptional: isOptional,
+                );
+                if (!success) {
+                  errorMessage =
+                      'Cannot update. Duplicate entry or invalid data.';
+                }
+              }
+
+              if (!dialogContext.mounted) return;
+
+              setDialogState(() => isSaving = false);
+
+              if (success) {
+                setState(() {
+                  selectedDay = day;
+                });
+                Navigator.pop(dialogContext);
+              } else {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  SnackBar(
+                    content: Text(errorMessage ?? 'Unable to save.'),
+                  ),
+                );
+              }
+            }
+
             return AlertDialog(
               title: Text(
-                existing == null
-                    ? 'ADD STUDY SCHEDULE'
-                    : 'EDIT SCHEDULE',
+                existing == null ? 'ADD STUDY SCHEDULE' : 'EDIT SCHEDULE',
                 style: const TextStyle(
                   color: cyan,
                   fontWeight: FontWeight.bold,
@@ -71,6 +144,7 @@ class _TimetablePageState extends State<TimetablePage> {
                     TextField(
                       controller: subjectController,
                       maxLength: 40,
+                      enabled: !isSaving,
                       decoration: const InputDecoration(
                         labelText: 'Subject',
                         hintText: 'Enter subject name',
@@ -89,43 +163,46 @@ class _TimetablePageState extends State<TimetablePage> {
                         7,
                         (i) => DropdownMenuItem(
                           value: i + 1,
-                          child: Text(
-                            TimetableSystem.weekdays[i],
-                          ),
+                          child: Text(TimetableSystem.weekdays[i]),
                         ),
                       ),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setDialogState(() => day = value);
-                        }
-                      },
+                      onChanged: isSaving
+                          ? null
+                          : (value) {
+                              if (value != null) {
+                                setDialogState(() {
+                                  day = value;
+                                  // Auto-disable optional if not Friday.
+                                  if (isOptional && day != 5) {
+                                    isOptional = false;
+                                  }
+                                });
+                              }
+                            },
                     ),
 
                     const SizedBox(height: 14),
 
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(
-                        Icons.access_time,
-                        color: cyan,
-                      ),
+                      leading: const Icon(Icons.access_time, color: cyan),
                       title: const Text('Start Time'),
-                      subtitle: Text(
-                        startTime.format(context),
-                      ),
+                      subtitle: Text(startTime.format(context)),
                       trailing: const Icon(Icons.edit),
-                      onTap: () async {
-                        final picked = await showTimePicker(
-                          context: dialogContext,
-                          initialTime: startTime,
-                        );
-
-                        if (picked != null) {
-                          setDialogState(() {
-                            startTime = picked;
-                          });
-                        }
-                      },
+                      enabled: !isSaving,
+                      onTap: isSaving
+                          ? null
+                          : () async {
+                              final picked = await showTimePicker(
+                                context: dialogContext,
+                                initialTime: startTime,
+                              );
+                              if (picked != null) {
+                                setDialogState(() {
+                                  startTime = picked;
+                                });
+                              }
+                            },
                     ),
 
                     const SizedBox(height: 10),
@@ -144,11 +221,13 @@ class _TimetablePageState extends State<TimetablePage> {
                             ),
                           )
                           .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setDialogState(() => duration = value);
-                        }
-                      },
+                      onChanged: isSaving
+                          ? null
+                          : (value) {
+                              if (value != null) {
+                                setDialogState(() => duration = value);
+                              }
+                            },
                     ),
 
                     const SizedBox(height: 12),
@@ -156,84 +235,38 @@ class _TimetablePageState extends State<TimetablePage> {
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Optional Schedule'),
-                      subtitle: const Text(
-                        'Not required for daily completion',
+                      subtitle: Text(
+                        day == 5
+                            ? 'Not required for daily completion (Friday only)'
+                            : 'Optional is only allowed on Friday',
                       ),
                       value: isOptional,
                       activeThumbColor: cyan,
-                      onChanged: (value) {
-                        setDialogState(() {
-                          isOptional = value;
-                        });
-                      },
+                      onChanged: (isSaving || day != 5)
+                          ? null
+                          : (value) {
+                              setDialogState(() => isOptional = value);
+                            },
                     ),
                   ],
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                  },
+                  onPressed: isSaving
+                      ? null
+                      : () => Navigator.pop(dialogContext),
                   child: const Text('CANCEL'),
                 ),
                 ElevatedButton(
-                  onPressed: () async {
-                    final subject = subjectController.text.trim();
-
-                    if (subject.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Enter a subject name'),
-                        ),
-                      );
-                      return;
-                    }
-
-                    final formattedTime =
-                        '${startTime.hour.toString().padLeft(2, '0')}:'
-                        '${startTime.minute.toString().padLeft(2, '0')}';
-
-                    bool success;
-
-                    if (existing == null) {
-                      success = await widget.timetableSystem.addSchedule(
-                        dayOfWeek: day,
-                        subject: subject,
-                        startTime: formattedTime,
-                        durationMinutes: duration,
-                        isOptional: isOptional,
-                      );
-                    } else {
-                      success = await widget.timetableSystem.updateSchedule(
-                        existing.id,
-                        dayOfWeek: day,
-                        subject: subject,
-                        startTime: formattedTime,
-                        durationMinutes: duration,
-                        isOptional: isOptional,
-                      );
-                    }
-
-                    if (!dialogContext.mounted) return;
-
-                    if (success) {
-                      setState(() {
-                        selectedDay = day;
-                      });
-
-                      Navigator.pop(dialogContext);
-                    } else {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Unable to save. Check the selected day and details.',
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                  child: const Text('SAVE'),
+                  onPressed: isSaving ? null : handleSave,
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('SAVE'),
                 ),
               ],
             );
@@ -245,16 +278,12 @@ class _TimetablePageState extends State<TimetablePage> {
     subjectController.dispose();
   }
 
-  Future<void> _deleteSchedule(
-    StudyScheduleItem item,
-  ) async {
+  Future<void> _deleteSchedule(StudyScheduleItem item) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete Schedule?'),
-        content: Text(
-          'Delete ${item.subject} from your timetable?',
-        ),
+        content: Text('Delete ${item.subject} from your timetable?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -272,7 +301,14 @@ class _TimetablePageState extends State<TimetablePage> {
     );
 
     if (confirmed == true) {
-      await widget.timetableSystem.deleteSchedule(item.id);
+      final success =
+          await widget.timetableSystem.deleteSchedule(item.id);
+      if (!mounted) return;
+      if (!success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to delete schedule.')),
+        );
+      }
     }
   }
 
@@ -284,9 +320,7 @@ class _TimetablePageState extends State<TimetablePage> {
       animation: system,
       builder: (context, child) {
         if (!system.isLoaded) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
 
         final schedules = system.getSchedulesForDay(selectedDay);
@@ -339,8 +373,7 @@ class _TimetablePageState extends State<TimetablePage> {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: 7,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(width: 8),
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
                     itemBuilder: (context, index) {
                       final day = index + 1;
                       final selected = selectedDay == day;
@@ -399,8 +432,7 @@ class _TimetablePageState extends State<TimetablePage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      TimetableSystem.weekdays[selectedDay - 1]
-                          .toUpperCase(),
+                      TimetableSystem.weekdays[selectedDay - 1].toUpperCase(),
                       style: const TextStyle(
                         color: cyan,
                         fontSize: 17,
@@ -410,10 +442,7 @@ class _TimetablePageState extends State<TimetablePage> {
                     ),
                     Text(
                       '${schedules.length} SESSIONS',
-                      style: TextStyle(
-                        color: mutedColor,
-                        fontSize: 11,
-                      ),
+                      style: TextStyle(color: mutedColor, fontSize: 11),
                     ),
                   ],
                 ),
@@ -457,10 +486,7 @@ class _TimetablePageState extends State<TimetablePage> {
                     final hour = int.parse(parts[0]);
                     final minute = int.parse(parts[1]);
 
-                    final time = TimeOfDay(
-                      hour: hour,
-                      minute: minute,
-                    );
+                    final time = TimeOfDay(hour: hour, minute: minute);
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -522,10 +548,7 @@ class _TimetablePageState extends State<TimetablePage> {
                           ),
 
                           PopupMenuButton<String>(
-                            icon: Icon(
-                              Icons.more_vert,
-                              color: mutedColor,
-                            ),
+                            icon: Icon(Icons.more_vert, color: mutedColor),
                             onSelected: (value) {
                               if (value == 'edit') {
                                 _showScheduleDialog(existing: item);

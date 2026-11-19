@@ -1,4 +1,3 @@
-
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -40,34 +39,31 @@ class PlayerSystem extends ChangeNotifier {
 
   bool isLoaded = false;
 
-  // MAXIMUM HP AND MP
+  // ============================================================
+  // CAPACITY GETTERS
+  // ============================================================
 
   int get maxHp => 100 + ((level - 1) * 10);
-
   int get maxMp => 100 + ((level - 1) * 10);
 
-  double get hpProgress =>
-      (hp / maxHp).clamp(0.0, 1.0).toDouble();
-
-  double get mpProgress =>
-      (mp / maxMp).clamp(0.0, 1.0).toDouble();
-
-  // ATTRIBUTE PERCENTAGES
+  double get hpProgress => (hp / maxHp).clamp(0.0, 1.0).toDouble();
+  double get mpProgress => (mp / maxMp).clamp(0.0, 1.0).toDouble();
 
   double get strengthProgress =>
       (strength / 100).clamp(0.0, 1.0).toDouble();
-
   double get intellectProgress =>
       (intellect / 100).clamp(0.0, 1.0).toDouble();
 
+  // ============================================================
   // XP SYSTEM
+  // ============================================================
 
   int get xpRequired => 1000 + ((level - 1) * 600);
+  double get xpProgress => (xp / xpRequired).clamp(0.0, 1.0).toDouble();
 
-  double get xpProgress =>
-      (xp / xpRequired).clamp(0.0, 1.0).toDouble();
-
-  // RANK SYSTEM
+  // ============================================================
+  // RANK & TITLE
+  // ============================================================
 
   String get rank {
     if (level <= 5) return 'E-Rank';
@@ -79,8 +75,6 @@ class PlayerSystem extends ChangeNotifier {
     return 'National Level';
   }
 
-  // TITLE SYSTEM
-
   String get title {
     if (level <= 5) return 'The Awakener';
     if (level <= 10) return 'Rookie Hunter';
@@ -91,41 +85,40 @@ class PlayerSystem extends ChangeNotifier {
     return 'Monarch of Shadows';
   }
 
-  // CURRENT DATE
+  // ============================================================
+  // DATE HELPERS
+  // ============================================================
 
   String get _currentDateKey {
     final now = DateTime.now();
-
     return '${now.year}-'
         '${now.month.toString().padLeft(2, '0')}-'
         '${now.day.toString().padLeft(2, '0')}';
   }
 
   int get currentTodayStudyMinutes {
-    if (_studyDate != _currentDateKey) {
-      return 0;
-    }
-
+    if (_studyDate != _currentDateKey) return 0;
     return todayStudyMinutes;
   }
 
+  // ============================================================
   // STUDY TIME FORMATTING
+  // ============================================================
 
   String _formatStudyTime(int minutes) {
     final hours = minutes ~/ 60;
     final remainingMinutes = minutes % 60;
-
     return '${hours.toString().padLeft(2, '0')}:'
         '${remainingMinutes.toString().padLeft(2, '0')}';
   }
 
   String get todayStudyTimeFormatted =>
       _formatStudyTime(currentTodayStudyMinutes);
+  String get totalStudyTimeFormatted => _formatStudyTime(totalStudyMinutes);
 
-  String get totalStudyTimeFormatted =>
-      _formatStudyTime(totalStudyMinutes);
-
+  // ============================================================
   // LOAD PLAYER DATA
+  // ============================================================
 
   Future<void> loadPlayer() async {
     final prefs = await SharedPreferences.getInstance();
@@ -144,7 +137,6 @@ class PlayerSystem extends ChangeNotifier {
     // LOAD ATTRIBUTES
     hp = prefs.getInt(_hpKey) ?? 100;
     mp = prefs.getInt(_mpKey) ?? 100;
-
     strength = prefs.getInt(_strengthKey) ?? 0;
     intellect = prefs.getInt(_intellectKey) ?? 0;
 
@@ -153,59 +145,64 @@ class PlayerSystem extends ChangeNotifier {
     mp = mp.clamp(0, maxMp);
 
     // DAILY STUDY RESET
-    if (_studyDate != _currentDateKey) {
-      _studyDate = _currentDateKey;
+    final currentKey = _currentDateKey;
+    if (_studyDate != currentKey) {
+      _studyDate = currentKey;
       todayStudyMinutes = 0;
-
-      await prefs.setString(_studyDateKey, _studyDate);
-      await prefs.setInt(_todayStudyKey, 0);
+      await _saveAll();
+    } else {
+      // Defensive save (ensures everything is committed).
+      await _saveAll();
     }
-
-    await _saveAttributes();
 
     isLoaded = true;
     notifyListeners();
   }
 
+  // ============================================================
   // CHANGE PLAYER NAME
+  // ============================================================
 
   Future<void> setPlayerName(String name) async {
     final cleanedName = name.trim();
-
     if (cleanedName.isEmpty) return;
 
     playerName = cleanedName;
-
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setString(_nameKey, playerName);
-
+    await _saveAll();
     notifyListeners();
   }
 
-  // ADD COMPLETED STUDY TIME
+  // ============================================================
+  // STUDY TIME
+  // ============================================================
 
   Future<void> addStudyTime(int minutes) async {
     if (minutes <= 0) return;
 
-    final prefs = await SharedPreferences.getInstance();
-
-    if (_studyDate != _currentDateKey) {
-      _studyDate = _currentDateKey;
+    final currentKey = _currentDateKey;
+    if (_studyDate != currentKey) {
+      _studyDate = currentKey;
       todayStudyMinutes = 0;
     }
 
     todayStudyMinutes += minutes;
     totalStudyMinutes += minutes;
 
-    await prefs.setString(_studyDateKey, _studyDate);
-    await prefs.setInt(_todayStudyKey, todayStudyMinutes);
-    await prefs.setInt(_totalStudyKey, totalStudyMinutes);
-
+    await _saveStudyTime();
     notifyListeners();
   }
 
-  // ADD XP AND HANDLE LEVEL UPS
+  /// Public method for future use (e.g., manual reset).
+  Future<void> resetDailyStudy() async {
+    _studyDate = _currentDateKey;
+    todayStudyMinutes = 0;
+    await _saveStudyTime();
+    notifyListeners();
+  }
+
+  // ============================================================
+  // XP & LEVEL
+  // ============================================================
 
   Future<bool> addXp(int amount) async {
     if (amount <= 0) return false;
@@ -221,97 +218,95 @@ class PlayerSystem extends ChangeNotifier {
       leveledUp = true;
     }
 
-    // MAXIMUM HP/MP INCREASES WITH LEVEL.
-    // CURRENT HP/MP WILL NOT AUTOMATICALLY REFILL.
+    // Max HP/MP increases on level up.
+    // Current HP/MP is NOT auto-refilled.
     hp = hp.clamp(0, maxHp);
     mp = mp.clamp(0, maxMp);
 
-    await _savePlayer();
-    await _saveAttributes();
-
+    await _saveAll();
     notifyListeners();
-
     return leveledUp;
   }
 
-  // SET HP
+  // ============================================================
+  // HP / MP
+  // ============================================================
 
   Future<void> setHp(int value) async {
     hp = value.clamp(0, maxHp);
-
     await _saveAttributes();
     notifyListeners();
   }
-
-  // SET MP
 
   Future<void> setMp(int value) async {
     mp = value.clamp(0, maxMp);
-
     await _saveAttributes();
     notifyListeners();
   }
-
-  // RECOVER HP
 
   Future<void> recoverHp(int amount) async {
     if (amount <= 0) return;
-
     hp = (hp + amount).clamp(0, maxHp);
-
     await _saveAttributes();
     notifyListeners();
   }
-
-  // RECOVER MP
 
   Future<void> recoverMp(int amount) async {
     if (amount <= 0) return;
-
     mp = (mp + amount).clamp(0, maxMp);
-
     await _saveAttributes();
     notifyListeners();
   }
 
-  // ADD STRENGTH
+  // ============================================================
+  // ATTRIBUTES
+  // ============================================================
 
   Future<void> addStrength(int amount) async {
     if (amount <= 0) return;
-
     strength += amount;
-
     await _saveAttributes();
     notifyListeners();
   }
-
-  // ADD INTELLECT
 
   Future<void> addIntellect(int amount) async {
     if (amount <= 0) return;
-
     intellect += amount;
-
     await _saveAttributes();
     notifyListeners();
   }
 
-  // SAVE PLAYER DATA
+  // ============================================================
+  // PERSISTENCE
+  // ============================================================
 
-  Future<void> _savePlayer() async {
+  Future<void> _saveAll() async {
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.setString(_nameKey, playerName);
     await prefs.setInt(_levelKey, level);
     await prefs.setInt(_xpKey, xp);
     await prefs.setInt(_totalXpKey, totalXp);
+
+    await prefs.setInt(_totalStudyKey, totalStudyMinutes);
+    await prefs.setInt(_todayStudyKey, todayStudyMinutes);
+    await prefs.setString(_studyDateKey, _studyDate);
+
+    await prefs.setInt(_hpKey, hp);
+    await prefs.setInt(_mpKey, mp);
+    await prefs.setInt(_strengthKey, strength);
+    await prefs.setInt(_intellectKey, intellect);
   }
 
-  // SAVE ATTRIBUTE DATA
+  Future<void> _saveStudyTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_totalStudyKey, totalStudyMinutes);
+    await prefs.setInt(_todayStudyKey, todayStudyMinutes);
+    await prefs.setString(_studyDateKey, _studyDate);
+  }
 
   Future<void> _saveAttributes() async {
     final prefs = await SharedPreferences.getInstance();
-
     await prefs.setInt(_hpKey, hp);
     await prefs.setInt(_mpKey, mp);
     await prefs.setInt(_strengthKey, strength);

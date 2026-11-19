@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -17,11 +16,19 @@ class StudyTimer extends ChangeNotifier {
   // MP RESERVATION KEY
   static const String _reservedMpKey = 'timer_reserved_mp';
 
+  // TIMER START TIME KEY (for deadline validation)
+  static const String _startedAtKey = 'timer_started_at';
+
   Timer? _ticker;
 
   String? activeQuestId;
   int remainingSeconds = 0;
   int? endTime;
+
+  /// When the timer was first started (persists across restarts).
+  /// Used by QuestSystem to validate whether the timer was legally
+  /// started before the quest deadline.
+  DateTime? startedAt;
 
   bool isRunning = false;
   bool isLoaded = false;
@@ -33,6 +40,9 @@ class StudyTimer extends ChangeNotifier {
   int reservedMp = 0;
 
   int get reservedMpAmount => reservedMp;
+
+  /// Convenience getter for UI.
+  DateTime? get startedAtTime => startedAt;
 
   int availableMp(PlayerSystem player) {
     return (player.mp - reservedMp).clamp(0, player.maxMp);
@@ -54,7 +64,6 @@ class StudyTimer extends ChangeNotifier {
     final difficulty = getDifficulty(durationMinutes);
 
     int rate;
-
     switch (difficulty) {
       case 'Easy':
         rate = 5;
@@ -70,14 +79,8 @@ class StudyTimer extends ChangeNotifier {
   }
 
   String get formattedTime {
-    final minutes = (remainingSeconds ~/ 60)
-        .toString()
-        .padLeft(2, '0');
-
-    final seconds = (remainingSeconds % 60)
-        .toString()
-        .padLeft(2, '0');
-
+    final minutes = (remainingSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (remainingSeconds % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
   }
 
@@ -94,10 +97,17 @@ class StudyTimer extends ChangeNotifier {
 
     reservedMp = prefs.getInt(_reservedMpKey) ?? 0;
 
-    // No active mission means no reservation.
+    final startedMs = prefs.getInt(_startedAtKey);
+    startedAt = startedMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(startedMs)
+        : null;
+
+    // No active mission means no reservation and no startedAt.
     if (activeQuestId == null) {
       reservedMp = 0;
+      startedAt = null;
       await prefs.remove(_reservedMpKey);
+      await prefs.remove(_startedAtKey);
     }
 
     if (isRunning && endTime != null) {
@@ -108,12 +118,12 @@ class StudyTimer extends ChangeNotifier {
         isRunning = false;
         isFinished = true;
         endTime = null;
-
         await _saveTimer();
       } else {
         _startTicker();
       }
     } else if (isRunning && endTime == null) {
+      // Corrupted state: running but no endTime.
       isRunning = false;
       await _saveTimer();
     }
@@ -128,11 +138,10 @@ class StudyTimer extends ChangeNotifier {
     required String questId,
     required int durationMinutes,
     required PlayerSystem player,
+    QuestSystem? questSystem,
   }) async {
     if (!isLoaded || !player.isLoaded) return false;
-
     if (isRunning || activeQuestId != null) return false;
-
     if (durationMinutes <= 0) return false;
 
     final mpCost = calculateMpCost(durationMinutes);
@@ -148,7 +157,10 @@ class StudyTimer extends ChangeNotifier {
 
     remainingSeconds = durationMinutes * 60;
 
-    endTime = DateTime.now()
+    final now = DateTime.now();
+    startedAt = now;
+
+    endTime = now
         .add(Duration(seconds: remainingSeconds))
         .millisecondsSinceEpoch;
 
@@ -156,6 +168,11 @@ class StudyTimer extends ChangeNotifier {
     isFinished = false;
 
     await _saveTimer();
+
+    // Register start time with QuestSystem for deadline validation.
+    if (questSystem != null) {
+      await questSystem.registerTimerStart(questId, now);
+    }
 
     _startTicker();
     notifyListeners();
@@ -183,7 +200,6 @@ class StudyTimer extends ChangeNotifier {
 
     // MP RESERVATION REMAINS ACTIVE.
     await _saveTimer();
-
     notifyListeners();
   }
 
@@ -191,9 +207,7 @@ class StudyTimer extends ChangeNotifier {
 
   Future<void> resume() async {
     if (!isLoaded) return;
-
     if (isRunning || activeQuestId == null) return;
-
     if (remainingSeconds <= 0 || isFinished) return;
 
     endTime = DateTime.now()
@@ -218,6 +232,7 @@ class StudyTimer extends ChangeNotifier {
     activeQuestId = null;
     remainingSeconds = 0;
     endTime = null;
+    startedAt = null;
 
     isRunning = false;
     isFinished = false;
@@ -234,6 +249,7 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_runningKey);
     await prefs.remove(_finishedKey);
     await prefs.remove(_reservedMpKey);
+    await prefs.remove(_startedAtKey);
 
     notifyListeners();
   }
@@ -282,7 +298,6 @@ class StudyTimer extends ChangeNotifier {
     }
   }
 
-
   // COMPLETE MISSION + DEDUCT RESERVED MP
 
   Future<int?> completeQuest(
@@ -322,10 +337,7 @@ class StudyTimer extends ChangeNotifier {
       }
 
       // COMPLETE QUEST FIRST.
-      final earnedXp = await questSystem.completeQuest(
-        questId,
-        player,
-      );
+      final earnedXp = await questSystem.completeQuest(questId, player);
 
       if (earnedXp == null) {
         debugPrint('CLAIM ERROR: QuestSystem returned null');
@@ -354,7 +366,6 @@ class StudyTimer extends ChangeNotifier {
     }
   }
 
-
   // SAVE TIMER + RESERVATION
 
   Future<void> _saveTimer() async {
@@ -369,8 +380,13 @@ class StudyTimer extends ChangeNotifier {
     await prefs.setInt(_remainingKey, remainingSeconds);
     await prefs.setBool(_runningKey, isRunning);
     await prefs.setBool(_finishedKey, isFinished);
-
     await prefs.setInt(_reservedMpKey, reservedMp);
+
+    if (startedAt != null) {
+      await prefs.setInt(_startedAtKey, startedAt!.millisecondsSinceEpoch);
+    } else {
+      await prefs.remove(_startedAtKey);
+    }
 
     if (endTime != null) {
       await prefs.setInt(_endTimeKey, endTime!);
