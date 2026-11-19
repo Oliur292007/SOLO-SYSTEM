@@ -185,6 +185,8 @@ class QuestSystem extends ChangeNotifier {
 
   int get totalQuests => quests.length;
 
+  int get totalCount => totalQuests;
+
   int get completedCount => completedQuestIds.length;
 
   int get remainingCount => totalQuests - completedCount;
@@ -229,20 +231,14 @@ class QuestSystem extends ChangeNotifier {
     return 'UNLOCKED';
   }
 
-  String get penaltyRemaining {
+  Duration get penaltyRemaining {
     if (!isPenaltyActive || penaltyUntil == null) {
-      return '00:00:00';
+      return Duration.zero;
     }
 
-    final difference = penaltyUntil!.difference(DateTime.now());
+    final remaining = penaltyUntil!.difference(DateTime.now());
 
-    final hours = difference.inHours;
-    final minutes = difference.inMinutes % 60;
-    final seconds = difference.inSeconds % 60;
-
-    return '${hours.toString().padLeft(2, '0')}:'
-        '${minutes.toString().padLeft(2, '0')}:'
-        '${seconds.toString().padLeft(2, '0')}';
+    return remaining.isNegative ? Duration.zero : remaining;
   }
 
   // LOAD
