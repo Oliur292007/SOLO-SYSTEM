@@ -13,6 +13,7 @@ class PlayerSystem extends ChangeNotifier {
   static const String _studyDateKey = 'study_date';
 
   String playerName = 'Shadow Hunter';
+
   int level = 1;
   int xp = 0;
   int totalXp = 0;
@@ -27,7 +28,7 @@ class PlayerSystem extends ChangeNotifier {
   int get xpRequired => 1000 + ((level - 1) * 250);
 
   double get xpProgress =>
-      (xp / xpRequired).clamp(0.0, 1.0);
+      (xp / xpRequired).clamp(0.0, 1.0).toDouble();
 
   String get rank {
     if (level <= 5) return 'E-Rank';
@@ -83,6 +84,7 @@ class PlayerSystem extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
 
     playerName = prefs.getString(_nameKey) ?? 'Player';
+
     level = prefs.getInt(_levelKey) ?? 1;
     xp = prefs.getInt(_xpKey) ?? 0;
     totalXp = prefs.getInt(_totalXpKey) ?? 0;
@@ -91,8 +93,6 @@ class PlayerSystem extends ChangeNotifier {
     todayStudyMinutes = prefs.getInt(_todayStudyKey) ?? 0;
 
     _studyDate = prefs.getString(_studyDateKey) ?? '';
-
-    // Reset daily Study Time when the date changes.
 
     if (_studyDate != _currentDateKey) {
       _studyDate = _currentDateKey;
@@ -114,6 +114,7 @@ class PlayerSystem extends ChangeNotifier {
     playerName = cleanedName;
 
     final prefs = await SharedPreferences.getInstance();
+
     await prefs.setString(_nameKey, playerName);
 
     notifyListeners();
@@ -125,8 +126,6 @@ class PlayerSystem extends ChangeNotifier {
     if (minutes <= 0) return;
 
     final prefs = await SharedPreferences.getInstance();
-
-    // Handle a new day.
 
     if (_studyDate != _currentDateKey) {
       _studyDate = _currentDateKey;
@@ -143,6 +142,8 @@ class PlayerSystem extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ADD XP AND HANDLE LEVEL UPS
+
   Future<bool> addXp(int amount) async {
     if (amount <= 0) return false;
 
@@ -158,6 +159,7 @@ class PlayerSystem extends ChangeNotifier {
     }
 
     await _savePlayer();
+
     notifyListeners();
 
     return leveledUp;

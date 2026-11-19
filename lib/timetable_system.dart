@@ -61,6 +61,8 @@ class TimetableSystem extends ChangeNotifier {
     'Sunday',
   ];
 
+  // GET SCHEDULES FOR A DAY
+
   List<StudyScheduleItem> getSchedulesForDay(int day) {
     final result = schedules
         .where((item) => item.dayOfWeek == day)
@@ -72,6 +74,8 @@ class TimetableSystem extends ChangeNotifier {
 
     return result;
   }
+
+  // LOAD TIMETABLE
 
   Future<void> loadTimetable() async {
     final prefs = await SharedPreferences.getInstance();
@@ -85,11 +89,13 @@ class TimetableSystem extends ChangeNotifier {
         final List<dynamic> decoded = jsonDecode(savedData);
 
         for (final item in decoded) {
-          schedules.add(
-            StudyScheduleItem.fromJson(
-              Map<String, dynamic>.from(item),
-            ),
+          final schedule = StudyScheduleItem.fromJson(
+            Map<String, dynamic>.from(item),
           );
+
+          if (_isValidScheduleData(schedule)) {
+            schedules.add(schedule);
+          }
         }
       } catch (_) {
         schedules.clear();
@@ -99,6 +105,8 @@ class TimetableSystem extends ChangeNotifier {
     isLoaded = true;
     notifyListeners();
   }
+
+  // ADD SCHEDULE
 
   Future<bool> addSchedule({
     required int dayOfWeek,
@@ -112,11 +120,12 @@ class TimetableSystem extends ChangeNotifier {
     if (dayOfWeek < 1 || dayOfWeek > 7) return false;
     if (cleanSubject.isEmpty) return false;
     if (durationMinutes <= 0) return false;
-
-    // Friday cannot have mandatory study tasks.
-    if (dayOfWeek == 5 && !isOptional) return false;
-
     if (!_isValidTime(startTime)) return false;
+
+    // Optional schedules are allowed only on Friday.
+    // Friday can contain both Mandatory and Optional schedules.
+
+    if (isOptional && dayOfWeek != 5) return false;
 
     final item = StudyScheduleItem(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -130,10 +139,13 @@ class TimetableSystem extends ChangeNotifier {
     schedules.add(item);
 
     await _saveTimetable();
+
     notifyListeners();
 
     return true;
   }
+
+  // UPDATE SCHEDULE
 
   Future<bool> updateSchedule(
     String id, {
@@ -151,8 +163,9 @@ class TimetableSystem extends ChangeNotifier {
     if (dayOfWeek < 1 || dayOfWeek > 7) return false;
     if (subject.trim().isEmpty) return false;
     if (durationMinutes <= 0) return false;
-    if (dayOfWeek == 5 && !isOptional) return false;
     if (!_isValidTime(startTime)) return false;
+
+    if (isOptional && dayOfWeek != 5) return false;
 
     schedules[index] = StudyScheduleItem(
       id: id,
@@ -164,25 +177,47 @@ class TimetableSystem extends ChangeNotifier {
     );
 
     await _saveTimetable();
+
     notifyListeners();
 
     return true;
   }
 
+  // DELETE SCHEDULE
+
   Future<void> deleteSchedule(String id) async {
     schedules.removeWhere((item) => item.id == id);
 
     await _saveTimetable();
+
     notifyListeners();
   }
 
+  // VALIDATE TIME
+
   bool _isValidTime(String value) {
-    final match = RegExp(
+    return RegExp(
       r'^([01]\d|2[0-3]):([0-5]\d)$',
     ).hasMatch(value);
-
-    return match;
   }
+
+  // VALIDATE SAVED SCHEDULE
+
+  bool _isValidScheduleData(StudyScheduleItem item) {
+    if (item.id.isEmpty) return false;
+    if (item.dayOfWeek < 1 || item.dayOfWeek > 7) return false;
+    if (item.subject.trim().isEmpty) return false;
+    if (item.durationMinutes <= 0) return false;
+    if (!_isValidTime(item.startTime)) return false;
+
+    if (item.isOptional && item.dayOfWeek != 5) {
+      return false;
+    }
+
+    return true;
+  }
+
+  // SAVE TIMETABLE
 
   Future<void> _saveTimetable() async {
     final prefs = await SharedPreferences.getInstance();
