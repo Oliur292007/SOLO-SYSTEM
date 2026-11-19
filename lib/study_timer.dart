@@ -282,6 +282,7 @@ class StudyTimer extends ChangeNotifier {
     }
   }
 
+
   // COMPLETE MISSION + DEDUCT RESERVED MP
 
   Future<int?> completeQuest(
@@ -298,44 +299,36 @@ class StudyTimer extends ChangeNotifier {
       return null;
     }
 
-    if (quest == null || !quest.requiresTimer) {
-      debugPrint('CLAIM ERROR: Quest not found or timer not required');
-      return null;
-    }
-
-    if (mpToDeduct <= 0) {
-      debugPrint('CLAIM ERROR: Reserved MP is zero');
-      return null;
-    }
-
-    if (earnedXp == null) {
-      debugPrint('CLAIM ERROR: QuestSystem returned null');
-      return null;
-    }
-
     _isClaiming = true;
 
     try {
-      final quest = questSystem.getQuestById(activeQuestId!);
+      final questId = activeQuestId!;
+      final quest = questSystem.getQuestById(questId);
 
       if (quest == null || !quest.requiresTimer) {
+        debugPrint('CLAIM ERROR: Quest not found or timer not required');
         return null;
       }
 
       final studyMinutes = quest.durationMinutes;
       final mpToDeduct = reservedMp;
 
+      debugPrint('CLAIM START: $questId');
+      debugPrint('Reserved MP: $mpToDeduct');
+
       if (mpToDeduct <= 0) {
+        debugPrint('CLAIM ERROR: Reserved MP is zero');
         return null;
       }
 
       // COMPLETE QUEST FIRST.
       final earnedXp = await questSystem.completeQuest(
-        activeQuestId!,
+        questId,
         player,
       );
 
       if (earnedXp == null) {
+        debugPrint('CLAIM ERROR: QuestSystem returned null');
         return null;
       }
 
@@ -345,14 +338,22 @@ class StudyTimer extends ChangeNotifier {
       // RECORD SUCCESSFUL STUDY TIME.
       await player.addStudyTime(studyMinutes);
 
+      debugPrint('CLAIM SUCCESS: +$earnedXp XP');
+      debugPrint('MP deducted: $mpToDeduct');
+
       // CLEAR TIMER AND RELEASE RESERVATION.
       await cancel();
 
       return earnedXp;
+    } catch (error, stackTrace) {
+      debugPrint('CLAIM EXCEPTION: $error');
+      debugPrint('$stackTrace');
+      return null;
     } finally {
       _isClaiming = false;
     }
   }
+
 
   // SAVE TIMER + RESERVATION
 
