@@ -671,9 +671,12 @@ class DashboardPage extends StatelessWidget {
               ),
               const SizedBox(height: 15),
               ...questSystem.quests.map(
+                
                 (quest) => QuestRow(
                   name: quest.name,
-                  duration: '${quest.durationMinutes} Min',
+                  duration: quest.requiresTimer
+                      ? '${quest.durationMinutes} Min'
+                      : '',
                   completed: questSystem.isCompleted(quest.id),
                 ),
               ),

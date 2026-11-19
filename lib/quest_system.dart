@@ -16,6 +16,7 @@ class StudyQuest {
   final bool requiresTimer;
   final bool isOptional;
   final DateTime? deadline;
+  final DateTime? availableFrom;
 
   const StudyQuest({
     required this.id,
@@ -25,13 +26,22 @@ class StudyQuest {
     this.requiresTimer = true,
     this.isOptional = false,
     this.deadline,
+    this.availableFrom,
   });
 
-  int get xpReward => (durationMinutes / 15).ceil() * 25;
+  int get xpReward {
+    if (isOptional || durationMinutes <= 0) return 0;
+    return (durationMinutes / 15).ceil() * 25;
+  }
 
   bool get isOverdue {
     if (deadline == null) return false;
     return DateTime.now().isAfter(deadline!);
+  }
+
+  bool get isAvailable {
+    if (availableFrom == null) return true;
+    return !DateTime.now().isBefore(availableFrom!);
   }
 }
 
@@ -48,14 +58,19 @@ class QuestSystem extends ChangeNotifier {
   static const String _completedKey = 'completed_quests';
   static const String _snapshotKey = 'quest_snapshot';
   static const String _penaltyKey = 'penalty_until';
+  static const String _nightLockKey = 'night_lock_active';
+
+  static const Duration penaltyDuration = Duration(hours: 4);
 
   Set<String> completedQuestIds = {};
 
   bool isLoaded = false;
+  bool isNightLockActive = false;
 
   DateTime? penaltyUntil;
 
   Timer? _deadlineTimer;
+  String? _loadedDateKey;
 
   String get todayKey {
     final now = DateTime.now();
@@ -68,14 +83,30 @@ class QuestSystem extends ChangeNotifier {
         DateTime.now().isBefore(penaltyUntil!);
   }
 
+  bool get isAppLockActive {
+    return isNightLockActive || isPenaltyActive;
+  }
+
+  String get lockStatus {
+    if (isPenaltyActive) return 'PENALTY LOCK';
+    if (isNightLockActive) return 'NIGHT LOCK';
+    return 'UNLOCKED';
+  }
+
   Duration get penaltyRemaining {
     if (!isPenaltyActive) return Duration.zero;
-
     return penaltyUntil!.difference(DateTime.now());
   }
 
   List<StudyQuest> get quests {
     final now = DateTime.now();
+
+    final wakeupAvailable = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      5,
+    );
 
     final wakeupDeadline = DateTime(
       now.year,
@@ -85,13 +116,19 @@ class QuestSystem extends ChangeNotifier {
       30,
     );
 
+    final sleepingAvailable = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      20,
+    );
+
     final sleepingDeadline = DateTime(
       now.year,
       now.month,
       now.day,
       23,
-      59,
-      59,
+      58,
     );
 
     final dailyQuests = <StudyQuest>[
@@ -101,6 +138,7 @@ class QuestSystem extends ChangeNotifier {
         subject: 'Start your day on time',
         durationMinutes: 0,
         requiresTimer: false,
+        availableFrom: wakeupAvailable,
         deadline: wakeupDeadline,
       ),
     ];
@@ -146,6 +184,7 @@ class QuestSystem extends ChangeNotifier {
         subject: 'Complete your day and get proper rest',
         durationMinutes: 0,
         requiresTimer: false,
+        availableFrom: sleepingAvailable,
         deadline: sleepingDeadline,
       ),
     );
@@ -181,6 +220,7 @@ class QuestSystem extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
 
     final savedDate = prefs.getString(_dateKey);
+    final isFirstInstallation = savedDate == null;
 
     final savedPenalty = prefs.getString(_penaltyKey);
 
@@ -188,9 +228,10 @@ class QuestSystem extends ChangeNotifier {
       penaltyUntil = DateTime.tryParse(savedPenalty);
     }
 
+    isNightLockActive =
+        prefs.getBool(_nightLockKey) ?? false;
+
     if (savedDate != todayKey) {
-      // Check the previous day's unfinished missions
-      // before resetting daily completion data.
       if (savedDate != null) {
         final oldCompleted =
             (prefs.getStringList(_completedKey) ?? []).toSet();
@@ -216,6 +257,29 @@ class QuestSystem extends ChangeNotifier {
     }
 
     isLoaded = true;
+    _loadedDateKey = todayKey;
+
+    // First installation after 8:30 AM:
+    // Automatically complete Wakeup only for this day.
+    final now = DateTime.now();
+
+    final todayWakeupDeadline = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      8,
+      30,
+    );
+
+    if (isFirstInstallation &&
+        now.isAfter(todayWakeupDeadline)) {
+      completedQuestIds.add('wakeup');
+
+      await prefs.setStringList(
+        _completedKey,
+        completedQuestIds.toList(),
+      );
+    }
 
     await _saveQuestSnapshot();
     await _checkDeadlines();
@@ -224,14 +288,20 @@ class QuestSystem extends ChangeNotifier {
 
     _deadlineTimer = Timer.periodic(
       const Duration(seconds: 15),
-      (_) => _checkDeadlines(),
+      (_) async {
+        final previousStatus = lockStatus;
+
+        await _checkDeadlines();
+
+        if (previousStatus != lockStatus) {
+          notifyListeners();
+        }
+      },
     );
 
     notifyListeners();
   }
 
-  // Save today's mission deadlines so they can
-  // still be checked after the app is closed.
   Future<void> _saveQuestSnapshot() async {
     if (!isLoaded) return;
 
@@ -251,62 +321,159 @@ class QuestSystem extends ChangeNotifier {
     );
   }
 
-  // Detect missed missions from the previous day.
   Future<void> _evaluatePreviousDay(
     String snapshotJson,
     Set<String> oldCompleted,
   ) async {
     try {
-      final List<dynamic> snapshot =
-          jsonDecode(snapshotJson);
+      final List<dynamic> snapshot = jsonDecode(snapshotJson);
 
+      DateTime? getDeadline(dynamic entry) {
+        final text = entry['deadline'] as String?;
+        if (text == null) return null;
+        return DateTime.tryParse(text);
+      }
+
+      bool missed(dynamic entry) {
+        final id = entry['id'] as String;
+        final optional = entry['optional'] as bool? ?? false;
+        final deadline = getDeadline(entry);
+
+        return !optional &&
+            !oldCompleted.contains(id) &&
+            deadline != null &&
+            DateTime.now().isAfter(deadline);
+      }
+
+      // Sleeping failure activates Night Lock.
+      for (final entry in snapshot) {
+        if (entry['id'] == 'sleeping' && missed(entry)) {
+          await _activateNightLock();
+        }
+      }
+
+      // Wakeup failure removes Night Lock and starts penalty.
+      for (final entry in snapshot) {
+        if (entry['id'] == 'wakeup' && missed(entry)) {
+          final deadline = getDeadline(entry)!;
+
+          await _deactivateNightLock();
+          await _startPenalty(deadline);
+        }
+      }
+
+      // Other mandatory missions start normal penalty.
       for (final entry in snapshot) {
         final id = entry['id'] as String;
-        final deadlineText = entry['deadline'] as String?;
-        final optional = entry['optional'] as bool? ?? false;
 
-        if (optional || oldCompleted.contains(id)) {
-          continue;
-        }
+        if (id == 'sleeping' || id == 'wakeup') continue;
 
-        if (deadlineText == null) continue;
-
-        final deadline = DateTime.tryParse(deadlineText);
-
-        if (deadline == null) continue;
-
-        if (DateTime.now().isAfter(deadline)) {
+        if (missed(entry)) {
+          final deadline = getDeadline(entry)!;
           await _startPenalty(deadline);
         }
       }
     } catch (_) {
-      // Ignore an invalid saved snapshot.
+      // Ignore invalid saved snapshot.
     }
   }
 
-  // Check today's mandatory missions.
+  Future<void> _checkDateRollover() async {
+    if (_loadedDateKey == null ||
+        _loadedDateKey == todayKey) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+
+    final oldCompleted = completedQuestIds.toSet();
+    final oldSnapshot = prefs.getString(_snapshotKey);
+
+    if (oldSnapshot != null) {
+      await _evaluatePreviousDay(
+        oldSnapshot,
+        oldCompleted,
+      );
+    }
+
+    completedQuestIds = {};
+
+    await prefs.setString(_dateKey, todayKey);
+    await prefs.setStringList(_completedKey, []);
+
+    _loadedDateKey = todayKey;
+
+    await _saveQuestSnapshot();
+
+    notifyListeners();
+  }
+
   Future<void> _checkDeadlines() async {
     if (!isLoaded) return;
+
+    await _checkDateRollover();
 
     final now = DateTime.now();
 
     for (final quest in quests) {
-      if (quest.isOptional) continue;
       if (isCompleted(quest.id)) continue;
       if (quest.deadline == null) continue;
+      if (!now.isAfter(quest.deadline!)) continue;
 
-      if (now.isAfter(quest.deadline!)) {
-        await _startPenalty(quest.deadline!);
+      // Sleeping failure: Night Lock only.
+      if (quest.id == 'sleeping') {
+        await _activateNightLock();
+        continue;
       }
+
+      // Wakeup failure: remove Night Lock + 4-hour penalty.
+      if (quest.id == 'wakeup') {
+        await _deactivateNightLock();
+        await _startPenalty(quest.deadline!);
+        continue;
+      }
+
+      // Optional missions never cause penalties.
+      if (quest.isOptional) continue;
+
+      // Other mandatory missions: 4-hour penalty.
+      await _startPenalty(quest.deadline!);
     }
   }
 
-  // A missed mission starts a 24-hour penalty.
-  // If another mandatory mission is missed later,
-  // the penalty end time moves forward accordingly.
+  Future<void> _activateNightLock() async {
+    if (isNightLockActive) return;
+
+    isNightLockActive = true;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setBool(
+      _nightLockKey,
+      true,
+    );
+
+    notifyListeners();
+  }
+
+  Future<void> _deactivateNightLock() async {
+    if (!isNightLockActive) return;
+
+    isNightLockActive = false;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setBool(
+      _nightLockKey,
+      false,
+    );
+
+    notifyListeners();
+  }
+
   Future<void> _startPenalty(DateTime missedDeadline) async {
     final newPenaltyEnd = missedDeadline.add(
-      const Duration(hours: 24),
+      penaltyDuration,
     );
 
     if (penaltyUntil != null &&
@@ -358,6 +525,9 @@ class QuestSystem extends ChangeNotifier {
       return null;
     }
 
+    // Cannot complete before the mission becomes available.
+    if (!quest.isAvailable) return null;
+
     if (quest.isOverdue) {
       await _checkDeadlines();
       return null;
@@ -383,7 +553,21 @@ class QuestSystem extends ChangeNotifier {
       completedQuestIds.toList(),
     );
 
-    await player.addXp(quest.xpReward);
+    // Sleeping completion activates Night Lock.
+    if (quest.id == 'sleeping') {
+      await _activateNightLock();
+    }
+
+    // Successful Wakeup removes Night Lock.
+    // An active Penalty Lock remains unaffected.
+    if (quest.id == 'wakeup') {
+      await _deactivateNightLock();
+    }
+
+    // Optional missions award zero XP.
+    if (quest.xpReward > 0) {
+      await player.addXp(quest.xpReward);
+    }
 
     notifyListeners();
 
