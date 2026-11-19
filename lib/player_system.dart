@@ -83,7 +83,7 @@ class PlayerSystem extends ChangeNotifier {
   Future<void> loadPlayer() async {
     final prefs = await SharedPreferences.getInstance();
 
-    playerName = prefs.getString(_nameKey) ?? 'Player';
+    playerName = prefs.getString(_nameKey) ?? 'Shadow Hunter';
 
     level = prefs.getInt(_levelKey) ?? 1;
     xp = prefs.getInt(_xpKey) ?? 0;
