@@ -8,10 +8,19 @@ class PlayerSystem extends ChangeNotifier {
   static const String _xpKey = 'player_xp';
   static const String _totalXpKey = 'player_total_xp';
 
-  String playerName = 'Player';
+  static const String _totalStudyKey = 'total_study_minutes';
+  static const String _todayStudyKey = 'today_study_minutes';
+  static const String _studyDateKey = 'study_date';
+
+  String playerName = 'Shadow Hunter';
   int level = 1;
   int xp = 0;
   int totalXp = 0;
+
+  int totalStudyMinutes = 0;
+  int todayStudyMinutes = 0;
+
+  String _studyDate = '';
 
   bool isLoaded = false;
 
@@ -40,6 +49,36 @@ class PlayerSystem extends ChangeNotifier {
     return 'Monarch of Shadows';
   }
 
+  String get _currentDateKey {
+    final now = DateTime.now();
+
+    return '${now.year}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+  }
+
+  int get currentTodayStudyMinutes {
+    if (_studyDate != _currentDateKey) {
+      return 0;
+    }
+
+    return todayStudyMinutes;
+  }
+
+  String _formatStudyTime(int minutes) {
+    final hours = minutes ~/ 60;
+    final remainingMinutes = minutes % 60;
+
+    return '${hours.toString().padLeft(2, '0')}:'
+        '${remainingMinutes.toString().padLeft(2, '0')}';
+  }
+
+  String get todayStudyTimeFormatted =>
+      _formatStudyTime(currentTodayStudyMinutes);
+
+  String get totalStudyTimeFormatted =>
+      _formatStudyTime(totalStudyMinutes);
+
   Future<void> loadPlayer() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -47,6 +86,21 @@ class PlayerSystem extends ChangeNotifier {
     level = prefs.getInt(_levelKey) ?? 1;
     xp = prefs.getInt(_xpKey) ?? 0;
     totalXp = prefs.getInt(_totalXpKey) ?? 0;
+
+    totalStudyMinutes = prefs.getInt(_totalStudyKey) ?? 0;
+    todayStudyMinutes = prefs.getInt(_todayStudyKey) ?? 0;
+
+    _studyDate = prefs.getString(_studyDateKey) ?? '';
+
+    // Reset daily Study Time when the date changes.
+
+    if (_studyDate != _currentDateKey) {
+      _studyDate = _currentDateKey;
+      todayStudyMinutes = 0;
+
+      await prefs.setString(_studyDateKey, _studyDate);
+      await prefs.setInt(_todayStudyKey, 0);
+    }
 
     isLoaded = true;
     notifyListeners();
@@ -61,6 +115,30 @@ class PlayerSystem extends ChangeNotifier {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_nameKey, playerName);
+
+    notifyListeners();
+  }
+
+  // ADD COMPLETED STUDY TIME
+
+  Future<void> addStudyTime(int minutes) async {
+    if (minutes <= 0) return;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    // Handle a new day.
+
+    if (_studyDate != _currentDateKey) {
+      _studyDate = _currentDateKey;
+      todayStudyMinutes = 0;
+    }
+
+    todayStudyMinutes += minutes;
+    totalStudyMinutes += minutes;
+
+    await prefs.setString(_studyDateKey, _studyDate);
+    await prefs.setInt(_todayStudyKey, todayStudyMinutes);
+    await prefs.setInt(_totalStudyKey, totalStudyMinutes);
 
     notifyListeners();
   }

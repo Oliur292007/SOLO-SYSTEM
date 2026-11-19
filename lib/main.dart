@@ -795,16 +795,27 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        const Row(
+        Row(
           children: [
             Expanded(
               child: InfoCard(
                 title: 'STUDY TIME',
-                value: '02:00',
-                unit: 'HOURS',
+                value: player.todayStudyTimeFormatted,
+                unit: 'HOURS : MINUTES',
                 icon: Icons.menu_book,
               ),
             ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: InfoCard(
+                title: 'SCREEN TIME',
+                value: '01:25',
+                unit: 'HOURS',
+                icon: Icons.phone_android,
+              ),
+            ),
+          ],
+        ),
             SizedBox(width: 10),
             Expanded(
               child: InfoCard(

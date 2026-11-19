@@ -13,7 +13,7 @@ class StudyTimer extends ChangeNotifier {
   static const String _remainingKey = 'timer_remaining';
   static const String _runningKey = 'timer_running';
   static const String _finishedKey = 'timer_finished';
-  
+
   Timer? _ticker;
 
   String? activeQuestId;
@@ -22,6 +22,8 @@ class StudyTimer extends ChangeNotifier {
   bool isRunning = false;
   bool isLoaded = false;
   bool isFinished = false;
+
+  bool _isClaiming = false;
 
   String get formattedTime {
     final minutes = (remainingSeconds ~/ 60).toString().padLeft(2, '0');
@@ -65,6 +67,7 @@ class StudyTimer extends ChangeNotifier {
 
     activeQuestId = questId;
     remainingSeconds = durationMinutes * 60;
+
     endTime = DateTime.now()
         .add(Duration(seconds: remainingSeconds))
         .millisecondsSinceEpoch;
@@ -119,6 +122,7 @@ class StudyTimer extends ChangeNotifier {
     endTime = null;
     isRunning = false;
     isFinished = false;
+    _isClaiming = false;
 
     final prefs = await SharedPreferences.getInstance();
 
@@ -168,20 +172,45 @@ class StudyTimer extends ChangeNotifier {
     }
   }
 
+  // COMPLETE MISSION + RECORD STUDY TIME
+
   Future<int?> completeQuest(
     QuestSystem questSystem,
     PlayerSystem player,
   ) async {
     if (!isFinished || activeQuestId == null) return null;
+    if (_isClaiming) return null;
 
-    final earnedXp = await questSystem.completeQuest(
-      activeQuestId!,
-      player,
-    );
+    _isClaiming = true;
 
-    await cancel();
+    try {
+      final quest = questSystem.getQuestById(activeQuestId!);
 
-    return earnedXp;
+      if (quest == null || !quest.requiresTimer) {
+        return null;
+      }
+
+      final studyMinutes = quest.durationMinutes;
+
+      final earnedXp = await questSystem.completeQuest(
+        activeQuestId!,
+        player,
+      );
+
+      // Only record Study Time after successful completion.
+
+      if (earnedXp == null) {
+        return null;
+      }
+
+      await player.addStudyTime(studyMinutes);
+
+      await cancel();
+
+      return earnedXp;
+    } finally {
+      _isClaiming = false;
+    }
   }
 
   Future<void> _saveTimer() async {
@@ -199,6 +228,7 @@ class StudyTimer extends ChangeNotifier {
     } else {
       await prefs.remove(_endTimeKey);
     }
+
     await prefs.setBool(_finishedKey, isFinished);
   }
 
