@@ -288,9 +288,30 @@ class StudyTimer extends ChangeNotifier {
     QuestSystem questSystem,
     PlayerSystem player,
   ) async {
-    if (!isLoaded || !isFinished) return null;
+    if (!isLoaded || !isFinished) {
+      debugPrint('CLAIM ERROR: Timer not finished or not loaded');
+      return null;
+    }
 
-    if (activeQuestId == null || _isClaiming) return null;
+    if (activeQuestId == null || _isClaiming) {
+      debugPrint('CLAIM ERROR: No active quest or already claiming');
+      return null;
+    }
+
+    if (quest == null || !quest.requiresTimer) {
+      debugPrint('CLAIM ERROR: Quest not found or timer not required');
+      return null;
+    }
+
+    if (mpToDeduct <= 0) {
+      debugPrint('CLAIM ERROR: Reserved MP is zero');
+      return null;
+    }
+
+    if (earnedXp == null) {
+      debugPrint('CLAIM ERROR: QuestSystem returned null');
+      return null;
+    }
 
     _isClaiming = true;
 

@@ -1279,25 +1279,27 @@ class QuestPage extends StatelessWidget {
                           ),
 
                         if (studyTimer.isFinished)
-                          ElevatedButton(
-                            onPressed: () async {
-                              final xp = await studyTimer.completeQuest(
-                                questSystem,
-                                player,
-                              );
+                        ElevatedButton(
+                          onPressed: () async {
+                            final xp = await studyTimer.completeQuest(
+                              questSystem,
+                              player,
+                            );
 
-                              if (context.mounted && xp != null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Quest completed! +$xp XP',
-                                    ),
-                                  ),
-                                );
-                              }
-                            },
-                            child: const Text('Claim XP'),
-                          ),
+                            if (!context.mounted) return;
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  xp != null
+                                      ? 'Quest completed! +$xp XP'
+                                      : 'Claim failed! Please check the console.',
+                                ),
+                              ),
+                            );
+                          },
+                          child: const Text('Claim XP'),
+                        ),
 
                         OutlinedButton(
                           onPressed: () => studyTimer.cancel(),
