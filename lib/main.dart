@@ -517,7 +517,112 @@ class DashboardPage extends StatelessWidget {
         ),
 
         const SizedBox(height: 24),
+        
+        AnimatedBuilder(
+          animation: questSystem,
+          builder: (context, child) {
+            final isPenalty = questSystem.isPenaltyActive;
+            final isNight = questSystem.isNightLockActive;
 
+            final Color statusColor = isPenalty
+                ? Colors.redAccent
+                : isNight
+                    ? Colors.blueAccent
+                    : Colors.greenAccent;
+
+            final IconData statusIcon = isPenalty
+                ? Icons.shield
+                : isNight
+                    ? Icons.nightlight_round
+                    : Icons.lock_open;
+
+            final String statusTitle = isPenalty
+                ? 'PENALTY LOCK'
+                : isNight
+                    ? 'NIGHT LOCK'
+                    : 'SYSTEM UNLOCKED';
+
+            String remainingText = '';
+
+            if (isPenalty) {
+              final remaining = questSystem.penaltyRemaining;
+
+              final hours = remaining.inHours;
+              final minutes = remaining.inMinutes.remainder(60);
+              final seconds = remaining.inSeconds.remainder(60);
+
+              remainingText =
+                  'Remaining: ${hours.toString().padLeft(2, '0')}:'
+                  '${minutes.toString().padLeft(2, '0')}:'
+                  '${seconds.toString().padLeft(2, '0')}';
+            } else if (isNight) {
+              remainingText = 'Complete your Wakeup Mission to unlock.';
+            } else {
+              remainingText = 'All restrictions are currently inactive.';
+            }
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 22),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: c.panel,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: statusColor.withValues(alpha: 0.55),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      statusIcon,
+                      color: statusColor,
+                      size: 25,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'APP RESTRICTION STATUS',
+                          style: TextStyle(
+                            color: c.muted,
+                            fontSize: 9,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          statusTitle,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          remainingText,
+                          style: TextStyle(
+                            color: c.muted,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
         
         AnimatedBuilder(
           animation: timetableSystem,
