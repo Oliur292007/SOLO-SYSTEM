@@ -586,7 +586,6 @@ class DashboardPage extends StatelessWidget {
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: active
-                        .
                         ? () async {
                             await restSystem.stopShortRest();
                           }
