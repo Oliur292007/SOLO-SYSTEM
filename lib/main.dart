@@ -1063,6 +1063,13 @@ class QuestPage extends StatelessWidget {
 
               final isFixedMission = !quest.requiresTimer;
               final isOverdue = quest.isOverdue && !completed;
+              final isUpcoming = isFixedMission && !quest.isAvailable;
+
+              final availableAt = quest.availableFrom;
+
+              final availableLabel = availableAt == null
+                  ? ''
+                  : '${availableAt.hour % 12 == 0 ? 12 : availableAt.hour % 12}:${availableAt.minute.toString().padLeft(2, '0')} ${availableAt.hour >= 12 ? 'PM' : 'AM'}';
 
               return Container(
                 key: ValueKey(quest.id),
@@ -1143,6 +1150,19 @@ class QuestPage extends StatelessWidget {
                         'ACTIVE SESSION',
                         style: TextStyle(color: c.cyan),
                       )
+
+                    // FIXED MISSIONS: UPCOMING STATUS
+                    else if (isUpcoming)
+                      Text(
+                        'UPCOMING • AVAILABLE AT $availableLabel',
+                        style: TextStyle(
+                          color: c.muted,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                          letterSpacing: 0.5,
+                        ),
+                      )
+
 
                     // FIXED MISSIONS: COMPLETE BUTTON ONLY
                     else if (isFixedMission)
