@@ -50,6 +50,10 @@ class PlayerSystem extends ChangeNotifier {
   static const String _hpDamageHistoryKey = 'hp_damage_history';
   static const int _maxHistoryEntries = 20;
 
+  // UID
+  static const String _uidKey = 'player_uid';
+  static const String _uidRegisteredKey = 'player_uid_registered';
+
   String playerName = 'Shadow Hunter';
 
   int level = 1;
@@ -65,6 +69,10 @@ class PlayerSystem extends ChangeNotifier {
 
   int strength = 0;
   int intellect = 0;
+
+  /// UID — assigned by UidManager on app start.
+  String? uid;
+  bool uidRegistered = false;
 
   /// Recent HP damage events (newest last).
   final List<HpDamageEvent> hpDamageHistory = [];
@@ -92,10 +100,7 @@ class PlayerSystem extends ChangeNotifier {
   // HP CRITICAL STATE
   // ============================================================
 
-  /// True when HP is depleted — player cannot start quests.
   bool get isCriticalHp => hp <= 0;
-
-  /// HP percentage threshold for warning UI.
   bool get isLowHp => hpProgress < 0.25 && hp > 0;
 
   // ============================================================
@@ -161,6 +166,24 @@ class PlayerSystem extends ChangeNotifier {
   String get totalStudyTimeFormatted => _formatStudyTime(totalStudyMinutes);
 
   // ============================================================
+  // UID ATTACHMENT
+  // ============================================================
+
+  /// Called after UidManager init + Supabase register attempt.
+  void attachUid(String? uidValue, bool registered) {
+    uid = uidValue;
+    uidRegistered = registered;
+    _saveUid();
+    notifyListeners();
+  }
+
+  void setUidRegistered(bool value) {
+    uidRegistered = value;
+    _saveUid();
+    notifyListeners();
+  }
+
+  // ============================================================
   // LOAD PLAYER DATA
   // ============================================================
 
@@ -183,13 +206,16 @@ class PlayerSystem extends ChangeNotifier {
     strength = prefs.getInt(_strengthKey) ?? 0;
     intellect = prefs.getInt(_intellectKey) ?? 0;
 
+    // Load UID
+    uid = prefs.getString(_uidKey);
+    uidRegistered = prefs.getBool(_uidRegisteredKey) ?? false;
+
     // Load damage history
     hpDamageHistory.clear();
     final historyRaw = prefs.getStringList(_hpDamageHistoryKey);
     if (historyRaw != null) {
       try {
         for (final entry in historyRaw) {
-          // Store as simple string "reason|damage|timestamp"
           final parts = entry.split('|');
           if (parts.length != 3) continue;
           hpDamageHistory.add(
@@ -207,11 +233,9 @@ class PlayerSystem extends ChangeNotifier {
       }
     }
 
-    // Clamp
     hp = hp.clamp(0, maxHp);
     mp = mp.clamp(0, maxMp);
 
-    // Daily study reset
     final currentKey = _currentDateKey;
     if (_studyDate != currentKey) {
       _studyDate = currentKey;
@@ -321,23 +345,19 @@ class PlayerSystem extends ChangeNotifier {
   }
 
   // ============================================================
-  // HP DAMAGE — NEW
+  // HP DAMAGE
   // ============================================================
 
-  /// Applies HP damage (already-calculated integer amount).
-  /// Returns the actual damage dealt (clamped to current HP).
-  /// Logs to history for future stats UI.
   Future<int> applyHpDamage(
     int damage, {
     String? reason,
   }) async {
     if (damage <= 0) return 0;
-    if (hp <= 0) return 0; // already critical
+    if (hp <= 0) return 0;
 
     final actualDamage = damage.clamp(0, hp);
     hp = (hp - damage).clamp(0, maxHp);
 
-    // Log event
     hpDamageHistory.add(
       HpDamageEvent(
         reason: reason ?? 'Unknown',
@@ -359,7 +379,6 @@ class PlayerSystem extends ChangeNotifier {
     return actualDamage;
   }
 
-  /// Clears damage history (future UI action).
   Future<void> clearHpDamageHistory() async {
     hpDamageHistory.clear();
     await _saveHpDamageHistory();
@@ -404,6 +423,8 @@ class PlayerSystem extends ChangeNotifier {
     await prefs.setInt(_mpKey, mp);
     await prefs.setInt(_strengthKey, strength);
     await prefs.setInt(_intellectKey, intellect);
+
+    await _saveUidPrefs(prefs);
   }
 
   Future<void> _saveStudyTime() async {
@@ -424,8 +445,23 @@ class PlayerSystem extends ChangeNotifier {
   Future<void> _saveHpDamageHistory() async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = hpDamageHistory
-        .map((e) => '${e.reason}|${e.damage}|${e.timestamp.millisecondsSinceEpoch}')
+        .map((e) =>
+            '${e.reason}|${e.damage}|${e.timestamp.millisecondsSinceEpoch}')
         .toList();
     await prefs.setStringList(_hpDamageHistoryKey, encoded);
+  }
+
+  Future<void> _saveUid() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _saveUidPrefs(prefs);
+  }
+
+  Future<void> _saveUidPrefs(SharedPreferences prefs) async {
+    if (uid != null && uid!.isNotEmpty) {
+      await prefs.setString(_uidKey, uid!);
+    } else {
+      await prefs.remove(_uidKey);
+    }
+    await prefs.setBool(_uidRegisteredKey, uidRegistered);
   }
 }

@@ -6,14 +6,16 @@ import 'study_timer.dart';
 import 'timetable_system.dart';
 import 'timetable_page.dart';
 import 'rest_system.dart';
+import 'uid_manager.dart';
+import 'supabase_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
   final player = PlayerSystem();
   final timetableSystem = TimetableSystem();
 
-  final restSystem = RestSystem(
-    player: player,
-  );
+  final restSystem = RestSystem(player: player);
 
   final questSystem = QuestSystem(
     timetableSystem: timetableSystem,
@@ -22,6 +24,25 @@ void main() {
 
   final studyTimer = StudyTimer();
 
+  // UID Manager
+  final uidManager = UidManager();
+  await uidManager.initialize();
+
+  // Supabase Service
+  final supabaseService = SupabaseService(uidManager: uidManager);
+  await supabaseService.initialize();
+
+  // Silent register attempt (offline-safe)
+  if (uidManager.hasUid && !uidManager.isRegistered) {
+    await supabaseService.registerUser(
+      playerName: player.playerName,
+      silent: true,
+    );
+  }
+
+  // Attach UID to player
+  player.attachUid(uidManager.uid, uidManager.isRegistered);
+
   runApp(
     SoloSystemApp(
       player: player,
@@ -29,6 +50,8 @@ void main() {
       studyTimer: studyTimer,
       timetableSystem: timetableSystem,
       restSystem: restSystem,
+      uidManager: uidManager,
+      supabaseService: supabaseService,
     ),
   );
 }
@@ -129,6 +152,8 @@ class SoloSystemApp extends StatefulWidget {
   final StudyTimer studyTimer;
   final TimetableSystem timetableSystem;
   final RestSystem restSystem;
+  final UidManager uidManager;
+  final SupabaseService supabaseService;
 
   const SoloSystemApp({
     super.key,
@@ -137,6 +162,8 @@ class SoloSystemApp extends StatefulWidget {
     required this.studyTimer,
     required this.timetableSystem,
     required this.restSystem,
+    required this.uidManager,
+    required this.supabaseService,
   });
 
   @override
@@ -204,6 +231,8 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
         studyTimer: widget.studyTimer,
         timetableSystem: widget.timetableSystem,
         restSystem: widget.restSystem,
+        uidManager: widget.uidManager,
+        supabaseService: widget.supabaseService,
       ),
     );
   }
@@ -217,6 +246,8 @@ class SystemHome extends StatefulWidget {
   final StudyTimer studyTimer;
   final TimetableSystem timetableSystem;
   final RestSystem restSystem;
+  final UidManager uidManager;
+  final SupabaseService supabaseService;
 
   const SystemHome({
     super.key,
@@ -227,6 +258,8 @@ class SystemHome extends StatefulWidget {
     required this.studyTimer,
     required this.timetableSystem,
     required this.restSystem,
+    required this.uidManager,
+    required this.supabaseService,
   });
 
   @override
@@ -248,6 +281,12 @@ class _SystemHomeState extends State<SystemHome> {
     await widget.timetableSystem.loadTimetable();
     await widget.questSystem.loadQuests();
     await widget.studyTimer.loadTimer();
+
+    // Re-attach UID (player.loadPlayer may reset it from prefs)
+    widget.player.attachUid(
+      widget.uidManager.uid,
+      widget.uidManager.isRegistered,
+    );
   }
 
   @override
@@ -277,7 +316,11 @@ class _SystemHomeState extends State<SystemHome> {
             studyTimer: widget.studyTimer,
             restSystem: widget.restSystem,
           ),
-          StatusPage(player: widget.player),
+          StatusPage(
+            player: widget.player,
+            uidManager: widget.uidManager,
+            supabaseService: widget.supabaseService,
+          ),
           SettingsPage(
             player: widget.player,
             isDarkMode: widget.isDarkMode,
@@ -359,7 +402,6 @@ class DashboardPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
-        // HEADER
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -397,10 +439,7 @@ class DashboardPage extends StatelessWidget {
             ),
           ],
         ),
-
         const SizedBox(height: 25),
-
-        // PLAYER PROFILE
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
@@ -508,20 +547,13 @@ class DashboardPage extends StatelessWidget {
             ],
           ),
         ),
-
         const SizedBox(height: 22),
-
         const SectionTitle(title: 'PLAYER VITALS'),
-
         const SizedBox(height: 12),
-
-        // HP + MP CARDS (with HP warning)
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: _HpVitalCard(player: player),
-            ),
+            Expanded(child: _HpVitalCard(player: player)),
             const SizedBox(width: 12),
             Expanded(
               child: _MpVitalCard(
@@ -532,10 +564,7 @@ class DashboardPage extends StatelessWidget {
             ),
           ],
         ),
-
         const SizedBox(height: 18),
-
-        // SHORT REST
         AnimatedBuilder(
           animation: restSystem,
           builder: (context, child) {
@@ -634,8 +663,6 @@ class DashboardPage extends StatelessWidget {
             );
           },
         ),
-
-        // LONG REST
         if (restSystem.isLongRestActive)
           Container(
             margin: const EdgeInsets.only(top: 14),
@@ -683,10 +710,7 @@ class DashboardPage extends StatelessWidget {
               ],
             ),
           ),
-
         const SizedBox(height: 24),
-
-        // APP RESTRICTION STATUS
         AnimatedBuilder(
           animation: questSystem,
           builder: (context, child) {
@@ -791,8 +815,6 @@ class DashboardPage extends StatelessWidget {
             );
           },
         ),
-
-        // TODAY'S SCHEDULE
         AnimatedBuilder(
           animation: timetableSystem,
           builder: (context, child) {
@@ -944,12 +966,8 @@ class DashboardPage extends StatelessWidget {
             );
           },
         ),
-
         const SectionTitle(title: 'DAILY QUEST'),
-
         const SizedBox(height: 12),
-
-        // DAILY QUEST PROGRESS
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1012,13 +1030,9 @@ class DashboardPage extends StatelessWidget {
             ],
           ),
         ),
-
         const SizedBox(height: 24),
-
         const SectionTitle(title: 'SYSTEM STATISTICS'),
-
         const SizedBox(height: 12),
-
         Row(
           children: [
             Expanded(
@@ -1040,9 +1054,7 @@ class DashboardPage extends StatelessWidget {
             ),
           ],
         ),
-
         const SizedBox(height: 22),
-
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1067,7 +1079,6 @@ class DashboardPage extends StatelessWidget {
             ],
           ),
         ),
-
         const SizedBox(height: 20),
         Center(
           child: Text(
@@ -1085,7 +1096,7 @@ class DashboardPage extends StatelessWidget {
 }
 
 // ============================================================
-// HP VITAL CARD (with warnings)
+// HP VITAL CARD
 // ============================================================
 
 class _HpVitalCard extends StatelessWidget {
@@ -1096,7 +1107,6 @@ class _HpVitalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = SystemColors.of(context);
-
     final isCritical = player.isCriticalHp;
     final isLow = player.isLowHp;
 
@@ -1492,15 +1502,11 @@ class QuestPage extends StatelessWidget {
                 letterSpacing: 2,
               ),
             ),
-
             const SizedBox(height: 8),
-
             Text(
               'Completed: ${questSystem.completedCount}/${questSystem.totalCount}',
               style: TextStyle(color: c.muted),
             ),
-
-            // HP CRITICAL BANNER
             if (player.isCriticalHp) ...[
               const SizedBox(height: 14),
               Container(
@@ -1514,11 +1520,7 @@ class QuestPage extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.warning,
-                      color: Colors.red,
-                      size: 20,
-                    ),
+                    const Icon(Icons.warning, color: Colors.red, size: 20),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -1535,10 +1537,7 @@ class QuestPage extends StatelessWidget {
                 ),
               ),
             ],
-
             const SizedBox(height: 20),
-
-            // ACTIVE STUDY SESSION
             if (activeId != null)
               Container(
                 padding: const EdgeInsets.all(18),
@@ -1577,7 +1576,8 @@ class QuestPage extends StatelessWidget {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.greenAccent.withValues(alpha: 0.15),
+                              color:
+                                  Colors.greenAccent.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: const Text(
@@ -1672,8 +1672,6 @@ class QuestPage extends StatelessWidget {
                   ],
                 ),
               ),
-
-            // EMPTY STATE
             if (quests.isEmpty)
               Container(
                 padding: const EdgeInsets.all(28),
@@ -1706,8 +1704,6 @@ class QuestPage extends StatelessWidget {
                   ],
                 ),
               ),
-
-            // DAILY MISSIONS
             ...quests.map((quest) {
               final state = questSystem.getQuestState(quest.id);
               final isActive = activeId == quest.id;
@@ -1841,9 +1837,8 @@ class QuestPage extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
-        final damage = willTakeDamage
-            ? _calculateCancelDamage(player)
-            : 0;
+        final damage =
+            willTakeDamage ? _calculateCancelDamage(player) : 0;
 
         return AlertDialog(
           title: const Text('Cancel Session?'),
@@ -2198,7 +2193,8 @@ class QuestPage extends StatelessWidget {
                   if (!ok && context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Unable to start: insufficient MP, HP, or busy.'),
+                        content: Text(
+                            'Unable to start: insufficient MP, HP, or busy.'),
                       ),
                     );
                   }
@@ -2210,9 +2206,7 @@ class QuestPage extends StatelessWidget {
           Text(
             blockedReason,
             style: TextStyle(
-              color: blockedReason.contains('HP')
-                  ? Colors.red
-                  : c.muted,
+              color: blockedReason.contains('HP') ? Colors.red : c.muted,
               fontSize: 10,
               fontWeight: blockedReason.contains('HP')
                   ? FontWeight.w600
@@ -2231,8 +2225,15 @@ class QuestPage extends StatelessWidget {
 
 class StatusPage extends StatelessWidget {
   final PlayerSystem player;
+  final UidManager uidManager;
+  final SupabaseService supabaseService;
 
-  const StatusPage({super.key, required this.player});
+  const StatusPage({
+    super.key,
+    required this.player,
+    required this.uidManager,
+    required this.supabaseService,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2243,7 +2244,6 @@ class StatusPage extends StatelessWidget {
       children: [
         const SectionTitle(title: 'PLAYER STATUS'),
         const SizedBox(height: 12),
-
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
@@ -2285,12 +2285,9 @@ class StatusPage extends StatelessWidget {
             ],
           ),
         ),
-
         const SizedBox(height: 22),
-
         const SectionTitle(title: 'ATTRIBUTES'),
         const SizedBox(height: 12),
-
         Row(
           children: [
             Expanded(
@@ -2312,8 +2309,6 @@ class StatusPage extends StatelessWidget {
             ),
           ],
         ),
-
-        // HP DAMAGE HISTORY (if any)
         if (player.hpDamageHistory.isNotEmpty) ...[
           const SizedBox(height: 22),
           const SectionTitle(title: 'RECENT HP DAMAGE'),
@@ -2331,42 +2326,41 @@ class StatusPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 ...player.hpDamageHistory.reversed.take(5).map(
-                  (event) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.remove_circle,
-                          color: Colors.redAccent,
-                          size: 15,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            event.reason,
-                            style: TextStyle(
-                              color: c.text,
-                              fontSize: 12,
+                      (event) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.remove_circle,
+                              color: Colors.redAccent,
+                              size: 15,
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                event.reason,
+                                style: TextStyle(
+                                  color: c.text,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '-${event.damage} HP',
+                              style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          '-${event.damage} HP',
-                          style: const TextStyle(
-                            color: Colors.redAccent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
               ],
             ),
           ),
         ],
-
         const SizedBox(height: 20),
       ],
     );
@@ -2469,7 +2463,6 @@ class SettingsPage extends StatelessWidget {
       children: [
         const SectionTitle(title: 'SYSTEM SETTINGS'),
         const SizedBox(height: 12),
-
         Container(
           decoration: BoxDecoration(
             color: c.panel,
@@ -2488,9 +2481,7 @@ class SettingsPage extends StatelessWidget {
                 trailing: Icon(Icons.edit, color: c.cyan),
                 onTap: () => _editPlayerName(context),
               ),
-
               Divider(color: c.divider, height: 1),
-
               ListTile(
                 leading: Icon(Icons.notifications_outlined, color: c.cyan),
                 title: Text('Notifications', style: TextStyle(color: c.text)),
@@ -2499,9 +2490,7 @@ class SettingsPage extends StatelessWidget {
                   style: TextStyle(color: c.muted, fontSize: 11),
                 ),
               ),
-
               Divider(color: c.divider, height: 1),
-
               ListTile(
                 leading: Icon(Icons.dark_mode_outlined, color: c.cyan),
                 title: Text('Dark Mode', style: TextStyle(color: c.text)),
@@ -2515,9 +2504,7 @@ class SettingsPage extends StatelessWidget {
                   activeThumbColor: c.cyan,
                 ),
               ),
-
               Divider(color: c.divider, height: 1),
-
               ListTile(
                 leading: Icon(Icons.info_outline, color: c.cyan),
                 title: Text('System Version', style: TextStyle(color: c.text)),
@@ -2526,7 +2513,6 @@ class SettingsPage extends StatelessWidget {
             ],
           ),
         ),
-
         const SizedBox(height: 20),
       ],
     );
