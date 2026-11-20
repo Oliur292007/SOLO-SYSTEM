@@ -49,7 +49,6 @@ class _SecurityPageState extends State<SecurityPage> {
   Future<void> _autoSync() async {
     if (_initialSyncDone) return;
     _initialSyncDone = true;
-    // Silent refresh on page open
     await widget.controller.forceSync();
   }
 
@@ -118,59 +117,63 @@ class _SecurityPageState extends State<SecurityPage> {
     final isOnline = widget.supabaseService.isOnline;
     final isRegistered = widget.controller.isRegistered;
     final uid = widget.uidManager.uid ?? 'NO UID';
+    final error = SupabaseService.lastRegistrationError ?? 'None';
 
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('SYNC DIAGNOSTIC'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _diagRow('UID', uid),
-                _diagRow('Registered', '$isRegistered'),
-                _diagRow('Online', '$isOnline'),
-                _diagRow('Supabase client',
-                    widget.supabaseService.client != null ? 'OK' : 'NULL'),
-                _diagRow('WhatsApp', widget.supabaseService.whatsappNumber),
-                _diagRow('Config count',
-                    widget.supabaseService.config.length.toString()),
-                _diagRow('Whitelist count',
-                    widget.supabaseService.whitelist.length.toString()),
-              ],
-            ),
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('SYNC DIAGNOSTIC'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _diagRow('UID', uid),
+              _diagRow('Registered', '$isRegistered'),
+              _diagRow('Online', '$isOnline'),
+              _diagRow('Supabase client',
+                  widget.supabaseService.client != null ? 'OK' : 'NULL'),
+              _diagRow('WhatsApp', widget.supabaseService.whatsappNumber),
+              _diagRow('Config count',
+                  widget.supabaseService.config.length.toString()),
+              _diagRow('Whitelist count',
+                  widget.supabaseService.whitelist.length.toString()),
+              const Divider(),
+              _diagRow('Error', error),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
-            ),
-          ],
         ),
-      );
-    }
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
 
-Widget _diagRow(String label, String value) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(
-      children: [
-        SizedBox(
-          width: 110,
-          child: Text(label,
-              style: const TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.bold)),
-        ),
-        Expanded(
-          child: SelectableText(value,
-              style: const TextStyle(
-                  fontSize: 11, fontFamily: 'monospace')),
-        ),
-      ],
-    ),
-  );
-}
+  Widget _diagRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(label,
+                style: const TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.bold)),
+          ),
+          Expanded(
+            child: SelectableText(value,
+                style: const TextStyle(
+                    fontSize: 11, fontFamily: 'monospace')),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = SystemColors.of(context);
@@ -251,8 +254,8 @@ Widget _diagRow(String label, String value) {
                     Expanded(
                       child: SelectableText(
                         uid,
-                        style: TextStyle(
-                          color: isDark ? Colors.white : Colors.white,
+                        style: const TextStyle(
+                          color: Colors.white,
                           fontSize: 18,
                           fontFamily: 'monospace',
                           fontWeight: FontWeight.bold,

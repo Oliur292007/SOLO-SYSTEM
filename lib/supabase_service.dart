@@ -13,6 +13,9 @@ class SupabaseService {
   static const String _whitelistCacheKey = 'supabase_whitelist_cache';
   static const String _lastSyncKey = 'supabase_last_sync';
 
+  // Global variable to store the last error for the UI Diagnostic
+  static String? lastRegistrationError;
+
   final UidManager uidManager;
 
   SupabaseService({required this.uidManager});
@@ -34,12 +37,13 @@ class SupabaseService {
   SupabaseClient? get client => _client;
   Map<String, String> get config => Map.unmodifiable(_config);
   List<Map<String, dynamic>> get whitelist => List.unmodifiable(_whitelist);
-  /// Consider online if we synced within last 2 minutes.
+  
   bool get isOnline {
     if (_isOnline) return true;
     if (_lastSync == null) return false;
     return DateTime.now().difference(_lastSync!) < const Duration(minutes: 2);
   }
+
   DateTime? get lastSync => _lastSync;
 
   String get whatsappNumber =>
@@ -71,16 +75,12 @@ class SupabaseService {
         anonKey: SupabaseConfig.publishableKey,
       );
       _client = Supabase.instance.client;
-      debugPrint('Supabase initialized');
     } catch (e) {
       debugPrint('Supabase init failed: $e');
       _client = null;
     }
 
-    // Load cached config/whitelist (offline-first)
     await _loadCache();
-
-    // Try network sync
     await _tryNetworkSync();
   }
 
@@ -95,9 +95,7 @@ class SupabaseService {
       final configRaw = prefs.getString(_configCacheKey);
       if (configRaw != null) {
         final decoded = jsonDecode(configRaw) as Map<String, dynamic>;
-        _config = decoded.map(
-          (k, v) => MapEntry(k, v.toString()),
-        );
+        _config = decoded.map((k, v) => MapEntry(k, v.toString()));
       }
 
       final whitelistRaw = prefs.getString(_whitelistCacheKey);
@@ -122,10 +120,7 @@ class SupabaseService {
     await prefs.setString(_configCacheKey, jsonEncode(_config));
     await prefs.setString(_whitelistCacheKey, jsonEncode(_whitelist));
     if (_lastSync != null) {
-      await prefs.setInt(
-        _lastSyncKey,
-        _lastSync!.millisecondsSinceEpoch,
-      );
+      await prefs.setInt(_lastSyncKey, _lastSync!.millisecondsSinceEpoch);
     }
   }
 
@@ -141,7 +136,6 @@ class SupabaseService {
     }
 
     try {
-      // Sync config
       final configRes = await _client!
           .rpc('get_config')
           .timeout(const Duration(seconds: 10));
@@ -152,7 +146,6 @@ class SupabaseService {
         );
       }
 
-      // Sync whitelist
       final whitelistRes = await _client!
           .rpc('get_whitelist')
           .timeout(const Duration(seconds: 10));
@@ -165,10 +158,8 @@ class SupabaseService {
 
       _isOnline = true;
       _lastSync = DateTime.now();
-
       await _saveCache();
 
-      // If we have a UID but haven't registered, retry
       if (uidManager.hasUid && !uidManager.isRegistered) {
         await registerUser(
           playerName: 'Shadow Hunter',
@@ -179,7 +170,6 @@ class SupabaseService {
       _retryTimer?.cancel();
       _retryTimer = null;
     } catch (e) {
-      debugPrint('Network sync failed: $e');
       _isOnline = false;
       _scheduleRetry();
     }
@@ -200,7 +190,6 @@ class SupabaseService {
     );
   }
 
-  /// Force sync — call from UI (e.g., pull-to-refresh).
   Future<bool> forceSync() async {
     await _tryNetworkSync();
     return _isOnline;
@@ -210,19 +199,19 @@ class SupabaseService {
   // REGISTER USER
   // ============================================================
 
-  /// Returns true if registration succeeded.
-  /// If offline, queues for retry.
   Future<bool> registerUser({
     required String playerName,
     bool silent = false,
   }) async {
-    if (!uidManager.hasUid) return false;
+    if (!uidManager.hasUid) {
+      lastRegistrationError = 'No UID generated locally';
+      return false;
+    }
 
     if (uidManager.isRegistered) return true;
 
     if (_client == null) {
-      // Queue for later
-      if (!silent) debugPrint('Register queued (offline)');
+      lastRegistrationError = 'Supabase Client is NULL. Check URL/Key.';
       return false;
     }
 
@@ -238,13 +227,14 @@ class SupabaseService {
       if (result is Map && result['success'] == true) {
         await uidManager.markRegistered();
         _isOnline = true;
-        if (!silent) debugPrint('User registered: ${uidManager.uid}');
+        lastRegistrationError = null; // Clear error on success
         return true;
       }
 
+      lastRegistrationError = 'Server returned: $result';
       return false;
     } catch (e) {
-      debugPrint('Register failed: $e');
+      lastRegistrationError = 'Exception: ${e.toString()}';
       await uidManager.incrementRegistrationAttempts();
       _isOnline = false;
       _scheduleRetry();
@@ -256,7 +246,6 @@ class SupabaseService {
   // GENERATE CODES
   // ============================================================
 
-  /// Returns (success, errorMessage, expiresAt).
   Future<({bool success, String? error, DateTime? expiresAt})> generateCodes() async {
     if (!uidManager.hasUid) {
       return (success: false, error: 'UID not initialized', expiresAt: null);
@@ -280,7 +269,7 @@ class SupabaseService {
           .timeout(const Duration(seconds: 15));
 
       if (result is! Map) {
-        return (success: false, error: 'Invalid response', expiresAt: null);
+        return (success: false, error: 'Invalid response format', expiresAt: null);
       }
 
       if (result['success'] == true) {
@@ -293,15 +282,14 @@ class SupabaseService {
 
       return (
         success: false,
-        error: result['error']?.toString() ?? 'Failed',
+        error: result['error']?.toString() ?? 'Failed to generate codes',
         expiresAt: null,
       );
     } catch (e) {
-      debugPrint('Generate codes failed: $e');
       _isOnline = false;
       return (
         success: false,
-        error: 'Network error. Try again.',
+        error: 'Exception: $e',
         expiresAt: null,
       );
     }
@@ -311,10 +299,9 @@ class SupabaseService {
   // VALIDATE CODE
   // ============================================================
 
-  /// Returns (success, errorMessage).
   Future<({bool success, String? error})> validateCode({
     required String code,
-    required String type, // 'emergency_unlock' or 'uninstall'
+    required String type,
   }) async {
     if (!uidManager.hasUid) {
       return (success: false, error: 'UID not initialized');
@@ -347,9 +334,8 @@ class SupabaseService {
         error: result['error']?.toString() ?? 'Invalid code',
       );
     } catch (e) {
-      debugPrint('Validate code failed: $e');
       _isOnline = false;
-      return (success: false, error: 'Network error. Try again.');
+      return (success: false, error: 'Exception: $e');
     }
   }
 
