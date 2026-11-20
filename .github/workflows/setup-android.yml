@@ -1,0 +1,28 @@
+name: Setup Android Folder
+
+on:
+  workflow_dispatch: # ম্যানুয়ালি চালানোর জন্য
+
+jobs:
+  setup-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0' # অথবা আপনার ব্যবহৃত ভার্সন
+          channel: 'stable'
+
+      - name: Recreate Android folder
+        run: flutter create . --platforms=android
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add android/
+          git commit -m "Add missing android folder via flutter create" || echo "No changes to commit"
+          git push
