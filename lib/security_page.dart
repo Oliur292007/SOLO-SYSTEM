@@ -112,19 +112,65 @@ class _SecurityPageState extends State<SecurityPage> {
 
   Future<void> _handleForceSync() async {
     await widget.controller.forceSync();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          widget.supabaseService.isOnline
-              ? 'Synced with server'
-              : 'Still offline. Try later.',
-        ),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
 
+    if (!mounted) return;
+
+    final isOnline = widget.supabaseService.isOnline;
+    final isRegistered = widget.controller.isRegistered;
+    final uid = widget.uidManager.uid ?? 'NO UID';
+
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('SYNC DIAGNOSTIC'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _diagRow('UID', uid),
+                _diagRow('Registered', '$isRegistered'),
+                _diagRow('Online', '$isOnline'),
+                _diagRow('Supabase client',
+                    widget.supabaseService.client != null ? 'OK' : 'NULL'),
+                _diagRow('WhatsApp', widget.supabaseService.whatsappNumber),
+                _diagRow('Config count',
+                    widget.supabaseService.config.length.toString()),
+                _diagRow('Whitelist count',
+                    widget.supabaseService.whitelist.length.toString()),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+
+Widget _diagRow(String label, String value) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 110,
+          child: Text(label,
+              style: const TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.bold)),
+        ),
+        Expanded(
+          child: SelectableText(value,
+              style: const TextStyle(
+                  fontSize: 11, fontFamily: 'monospace')),
+        ),
+      ],
+    ),
+  );
+}
   @override
   Widget build(BuildContext context) {
     final c = SystemColors.of(context);
