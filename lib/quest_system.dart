@@ -49,13 +49,13 @@ class StudyQuest {
 }
 
 enum QuestState {
-  upcoming,   // not available yet
-  available,  // can start
-  active,     // timer running
-  completed,  // genuinely completed (XP awarded)
-  skipped,    // optional missed (no penalty)
-  missed,     // mandatory missed (penalty applied)
-  locked,     // fallback
+  upcoming,
+  available,
+  active,
+  completed,
+  skipped,
+  missed,
+  locked,
 }
 
 class QuestSystem extends ChangeNotifier {
@@ -69,6 +69,7 @@ class QuestSystem extends ChangeNotifier {
   static const String _timerStartsKey = 'quest_timer_starts';
 
   static const Duration penaltyDuration = Duration(hours: 4);
+  static const Duration hpCriticalPenalty = Duration(hours: 2);
 
   static const String _scheduleIdPrefix = 'schedule_';
 
@@ -80,6 +81,7 @@ class QuestSystem extends ChangeNotifier {
     required this.restSystem,
   }) {
     timetableSystem.addListener(_onTimetableChanged);
+    restSystem.player.addListener(_onPlayerChanged);
   }
 
   final Set<String> completedQuestIds = {};
@@ -94,6 +96,9 @@ class QuestSystem extends ChangeNotifier {
   DateTime? penaltyUntil;
 
   Timer? _deadlineTimer;
+  Timer? _penaltyTicker;
+
+  bool _hpCriticalPenaltyApplied = false;
 
   String _loadedDateKey = '';
 
@@ -202,8 +207,6 @@ class QuestSystem extends ChangeNotifier {
     return null;
   }
 
-  /// Extracts the underlying timetable schedule ID from a quest ID.
-  /// Returns null if the quest is not a timetable mission.
   String? scheduleIdFromQuestId(String questId) {
     if (!questId.startsWith(_scheduleIdPrefix)) return null;
     return questId.substring(_scheduleIdPrefix.length);
@@ -250,6 +253,13 @@ class QuestSystem extends ChangeNotifier {
       return (allowed: false, reason: 'Already completed.');
     }
 
+    if (restSystem.player.isCriticalHp) {
+      return (
+        allowed: false,
+        reason: 'HP CRITICAL — Rest required to continue.',
+      );
+    }
+
     final now = DateTime.now();
 
     if (quest.availableFrom != null && now.isBefore(quest.availableFrom!)) {
@@ -272,9 +282,7 @@ class QuestSystem extends ChangeNotifier {
     if (quest == null) return QuestState.locked;
 
     if (isCompleted(questId)) return QuestState.completed;
-
     if (isSkipped(questId)) return QuestState.skipped;
-
     if (isMissed(questId)) return QuestState.missed;
 
     final now = DateTime.now();
@@ -311,6 +319,37 @@ class QuestSystem extends ChangeNotifier {
     if (!isPenaltyActive || penaltyUntil == null) return Duration.zero;
     final remaining = penaltyUntil!.difference(DateTime.now());
     return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  // ============================================================
+  // HP DAMAGE — LEVEL SCALED (with cap)
+  // ============================================================
+
+  /// Base percentages (of maxHp) — before level multiplier.
+  static const double _mandatoryMissPercent = 15.0;
+  static const double _wakeupMissPercent = 18.0;
+  static const double _sleepingMissPercent = 15.0;
+  static const double _cancelDamagePercent = 8.0;
+
+  /// Hard cap per miss (fraction of maxHp).
+  static const double _damageCapFraction = 0.40;
+
+  Future<void> _applyMissDamage(
+    PlayerSystem player,
+    double basePercent,
+    String reason,
+  ) async {
+    if (player.hp <= 0) return;
+
+    final levelMultiplier = 1.0 + ((player.level - 1) * 0.05);
+    final rawDamage = player.maxHp * (basePercent / 100.0) * levelMultiplier;
+    final cappedDamage = rawDamage.clamp(
+      0.0,
+      player.maxHp * _damageCapFraction,
+    );
+    final damage = cappedDamage.round();
+
+    await player.applyHpDamage(damage, reason: reason);
   }
 
   // ============================================================
@@ -410,11 +449,10 @@ class QuestSystem extends ChangeNotifier {
     await _cleanupOrphanQuestIds();
     await _checkDeadlines();
     _startDeadlineChecker();
+    _syncPenaltyTicker();
     notifyListeners();
   }
 
-  /// Removes completed/missed/skipped quest IDs whose underlying
-  /// timetable schedule no longer exists.
   Future<void> _cleanupOrphanQuestIds() async {
     final validScheduleIds =
         timetableSystem.allSchedules.map((s) => s.id).toSet();
@@ -425,7 +463,7 @@ class QuestSystem extends ChangeNotifier {
       final toRemove = <String>[];
       for (final questId in set) {
         final scheduleId = scheduleIdFromQuestId(questId);
-        if (scheduleId == null) continue; // wakeup/sleeping
+        if (scheduleId == null) continue;
         if (!validScheduleIds.contains(scheduleId)) {
           toRemove.add(questId);
         }
@@ -452,7 +490,7 @@ class QuestSystem extends ChangeNotifier {
   }
 
   // ============================================================
-  // COMPLETE FIXED MISSION
+  // COMPLETE MISSIONS
   // ============================================================
 
   Future<int?> completeFixedMission(
@@ -466,13 +504,10 @@ class QuestSystem extends ChangeNotifier {
     if (quest == null) return null;
     if (isCompleted(questId)) return null;
     if (!quest.isAvailable) return null;
+    if (player.isCriticalHp) return null;
 
     return _completeMission(quest, player);
   }
-
-  // ============================================================
-  // COMPLETE TIMER MISSION
-  // ============================================================
 
   Future<int?> completeQuest(
     String questId,
@@ -486,6 +521,7 @@ class QuestSystem extends ChangeNotifier {
     if (isCompleted(questId)) return null;
     if (isMissed(questId)) return null;
     if (isSkipped(questId)) return null;
+    if (player.isCriticalHp) return null;
 
     if (quest.availableFrom != null &&
         DateTime.now().isBefore(quest.availableFrom!)) {
@@ -501,10 +537,6 @@ class QuestSystem extends ChangeNotifier {
 
     return _completeMission(quest, player);
   }
-
-  // ============================================================
-  // COMMON COMPLETION
-  // ============================================================
 
   Future<int?> _completeMission(
     StudyQuest quest,
@@ -530,7 +562,6 @@ class QuestSystem extends ChangeNotifier {
     await _saveMissed();
     await _saveSkipped();
 
-    // Notify timetable system if this is a timetable mission.
     final scheduleId = scheduleIdFromQuestId(quest.id);
     if (scheduleId != null) {
       await timetableSystem.markCompleted(scheduleId, dateKey: todayKey);
@@ -551,6 +582,7 @@ class QuestSystem extends ChangeNotifier {
       await player.addXp(earnedXp);
     }
 
+    _syncPenaltyTicker();
     notifyListeners();
     return earnedXp;
   }
@@ -578,6 +610,7 @@ class QuestSystem extends ChangeNotifier {
       await _checkDateRollover();
 
       final now = DateTime.now();
+      final player = restSystem.player;
 
       for (final quest in quests) {
         if (isCompleted(quest.id)) continue;
@@ -587,28 +620,35 @@ class QuestSystem extends ChangeNotifier {
 
         if (!now.isAfter(quest.deadline!)) continue;
 
-        // Timer legally started before deadline → allow future claim.
         if (quest.requiresTimer && wasTimerStartedBeforeDeadline(quest.id)) {
           continue;
         }
 
-        // Optional mission: skipped (no penalty, no lock).
+        // Optional → skipped (no penalty, no HP loss).
         if (quest.isOptional) {
           skippedQuestIds.add(quest.id);
           await _saveSkipped();
           continue;
         }
 
-        // Sleeping miss: Night Lock, no 4h penalty, no long rest.
+        // Sleeping miss: Night Lock + HP damage, no penalty timer.
         if (quest.id == 'sleeping') {
           isNightLockActive = true;
           missedQuestIds.add(quest.id);
           await _saveNightLock();
           await _saveMissed();
+
+          await _applyMissDamage(
+            player,
+            _sleepingMissPercent,
+            'Sleeping Missed',
+          );
+
+          _maybeApplyHpCriticalPenalty(player);
           continue;
         }
 
-        // Wakeup miss: end long rest at 8:30, clear night lock, start penalty.
+        // Wakeup miss: end long rest, clear night lock, HP damage + penalty.
         if (quest.id == 'wakeup') {
           await restSystem.endLongRest(endedAt: quest.deadline!);
           isNightLockActive = false;
@@ -616,16 +656,33 @@ class QuestSystem extends ChangeNotifier {
           await _startPenalty(quest.deadline!);
           missedQuestIds.add(quest.id);
           await _saveMissed();
+
+          await _applyMissDamage(
+            player,
+            _wakeupMissPercent,
+            'Wakeup Missed',
+          );
+
+          _maybeApplyHpCriticalPenalty(player);
           continue;
         }
 
-        // Other mandatory timer missions: penalty.
+        // Other mandatory timer missions.
         await _startPenalty(quest.deadline!);
         missedQuestIds.add(quest.id);
         await _saveMissed();
+
+        await _applyMissDamage(
+          player,
+          _mandatoryMissPercent,
+          'Mission Missed: ${quest.name}',
+        );
+
+        _maybeApplyHpCriticalPenalty(player);
       }
 
       await _savePenalty();
+      _syncPenaltyTicker();
       notifyListeners();
     } finally {
       _isCheckingDeadlines = false;
@@ -666,6 +723,8 @@ class QuestSystem extends ChangeNotifier {
   Future<void> _evaluatePreviousDay(String? snapshotData) async {
     if (snapshotData == null || snapshotData.isEmpty) return;
 
+    final player = restSystem.player;
+
     try {
       final List<dynamic> decoded = jsonDecode(snapshotData);
       final List<Map<String, dynamic>> previousQuests =
@@ -679,8 +738,6 @@ class QuestSystem extends ChangeNotifier {
 
       for (final item in previousQuests) {
         final id = item['id'] as String;
-
-        // Cross-day safety: only evaluate entries from a previous day.
         final itemDateKey = item['dateKey'] as String?;
         if (itemDateKey != null && itemDateKey == todayKey) continue;
 
@@ -690,13 +747,18 @@ class QuestSystem extends ChangeNotifier {
         final timerStarted = (item['timerStarted'] as bool?) ?? false;
 
         if (completedQuestIds.contains(id)) continue;
-        if (isOptional) continue; // No penalty for optional
-
-        if (timerStarted) continue; // No penalty if started in time
+        if (isOptional) continue;
+        if (timerStarted) continue;
 
         if (id == 'sleeping') {
           isNightLockActive = true;
           await _saveNightLock();
+          await _applyMissDamage(
+            player,
+            _sleepingMissPercent,
+            'Sleeping Missed (previous day)',
+          );
+          _maybeApplyHpCriticalPenalty(player);
           continue;
         }
 
@@ -704,10 +766,22 @@ class QuestSystem extends ChangeNotifier {
           isNightLockActive = false;
           await _saveNightLock();
           await _startPenalty(deadline);
+          await _applyMissDamage(
+            player,
+            _wakeupMissPercent,
+            'Wakeup Missed (previous day)',
+          );
+          _maybeApplyHpCriticalPenalty(player);
           continue;
         }
 
         await _startPenalty(deadline);
+        await _applyMissDamage(
+          player,
+          _mandatoryMissPercent,
+          'Mission Missed (previous day)',
+        );
+        _maybeApplyHpCriticalPenalty(player);
       }
     } catch (_) {
       // Ignore corrupted snapshot.
@@ -728,6 +802,60 @@ class QuestSystem extends ChangeNotifier {
 
     penaltyUntil = newPenaltyEnd;
     await _savePenalty();
+    _syncPenaltyTicker();
+  }
+
+  void _maybeApplyHpCriticalPenalty(PlayerSystem player) {
+    if (player.isCriticalHp && !_hpCriticalPenaltyApplied) {
+      _hpCriticalPenaltyApplied = true;
+      final newEnd = DateTime.now().add(hpCriticalPenalty);
+      if (penaltyUntil == null || penaltyUntil!.isBefore(newEnd)) {
+        penaltyUntil = newEnd;
+        _savePenalty();
+        _syncPenaltyTicker();
+      }
+    }
+    // Reset flag if HP restored.
+    if (!player.isCriticalHp) {
+      _hpCriticalPenaltyApplied = false;
+    }
+  }
+
+  // ============================================================
+  // PENALTY TICKER (1-second countdown)
+  // ============================================================
+
+  void _syncPenaltyTicker() {
+    final shouldRun = isPenaltyActive || isNightLockActive;
+    if (shouldRun && (_penaltyTicker == null || !_penaltyTicker!.isActive)) {
+      _startPenaltyTicker();
+    } else if (!shouldRun) {
+      _stopPenaltyTicker();
+    }
+  }
+
+  void _startPenaltyTicker() {
+    _penaltyTicker?.cancel();
+    _penaltyTicker = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (!isPenaltyActive && !isNightLockActive) {
+          _stopPenaltyTicker();
+          return;
+        }
+        // If penalty just expired, save cleared state.
+        if (penaltyUntil != null && !isPenaltyActive) {
+          penaltyUntil = null;
+          _savePenalty();
+        }
+        notifyListeners();
+      },
+    );
+  }
+
+  void _stopPenaltyTicker() {
+    _penaltyTicker?.cancel();
+    _penaltyTicker = null;
   }
 
   // ============================================================
@@ -740,10 +868,7 @@ class QuestSystem extends ChangeNotifier {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-
       final Map<String, Map<String, dynamic>> snapshot = {};
-
-      // Preserve only entries from TODAY that are still pending.
       final today = todayKey;
 
       for (final quest in quests) {
@@ -782,6 +907,13 @@ class QuestSystem extends ChangeNotifier {
     await _saveQuestSnapshot();
     await _checkDeadlines();
     notifyListeners();
+  }
+
+  void _onPlayerChanged() {
+    // HP restored → clear HP-critical flag & ticker sync.
+    if (!restSystem.player.isCriticalHp && _hpCriticalPenaltyApplied) {
+      _hpCriticalPenaltyApplied = false;
+    }
   }
 
   // ============================================================
@@ -837,7 +969,9 @@ class QuestSystem extends ChangeNotifier {
   @override
   void dispose() {
     _deadlineTimer?.cancel();
+    _penaltyTicker?.cancel();
     timetableSystem.removeListener(_onTimetableChanged);
+    restSystem.player.removeListener(_onPlayerChanged);
     super.dispose();
   }
 }

@@ -12,12 +12,17 @@ class StudyTimer extends ChangeNotifier {
   static const String _remainingKey = 'timer_remaining';
   static const String _runningKey = 'timer_running';
   static const String _finishedKey = 'timer_finished';
-
-  // MP RESERVATION KEY
   static const String _reservedMpKey = 'timer_reserved_mp';
-
-  // TIMER START TIME KEY (for deadline validation)
   static const String _startedAtKey = 'timer_started_at';
+
+  /// Cancel damage applies only if elapsed session ≥ this threshold.
+  static const Duration _cancelDamageThreshold = Duration(minutes: 5);
+
+  /// Cancel damage base percent (of maxHp, before level multiplier).
+  static const double _cancelDamagePercent = 8.0;
+
+  /// Hard cap per cancel (fraction of maxHp).
+  static const double _cancelDamageCapFraction = 0.40;
 
   Timer? _ticker;
 
@@ -25,9 +30,6 @@ class StudyTimer extends ChangeNotifier {
   int remainingSeconds = 0;
   int? endTime;
 
-  /// When the timer was first started (persists across restarts).
-  /// Used by QuestSystem to validate whether the timer was legally
-  /// started before the quest deadline.
   DateTime? startedAt;
 
   bool isRunning = false;
@@ -36,19 +38,18 @@ class StudyTimer extends ChangeNotifier {
 
   bool _isClaiming = false;
 
-  // RESERVED MP
   int reservedMp = 0;
 
   int get reservedMpAmount => reservedMp;
-
-  /// Convenience getter for UI.
   DateTime? get startedAtTime => startedAt;
 
   int availableMp(PlayerSystem player) {
     return (player.mp - reservedMp).clamp(0, player.maxMp);
   }
 
-  // AUTOMATIC MISSION DIFFICULTY
+  // ============================================================
+  // DIFFICULTY & MP COST
+  // ============================================================
 
   String getDifficulty(int durationMinutes) {
     if (durationMinutes <= 30) return 'Easy';
@@ -56,13 +57,9 @@ class StudyTimer extends ChangeNotifier {
     return 'Hard';
   }
 
-  // MP COST CALCULATION
-
   int calculateMpCost(int durationMinutes) {
     if (durationMinutes <= 0) return 0;
-
     final difficulty = getDifficulty(durationMinutes);
-
     int rate;
     switch (difficulty) {
       case 'Easy':
@@ -74,7 +71,6 @@ class StudyTimer extends ChangeNotifier {
       default:
         rate = 12;
     }
-
     return ((durationMinutes + 14) ~/ 15) * rate;
   }
 
@@ -84,7 +80,9 @@ class StudyTimer extends ChangeNotifier {
     return '$minutes:$seconds';
   }
 
-  // LOAD SAVED TIMER AND MP RESERVATION
+  // ============================================================
+  // LOAD
+  // ============================================================
 
   Future<void> loadTimer() async {
     final prefs = await SharedPreferences.getInstance();
@@ -102,7 +100,6 @@ class StudyTimer extends ChangeNotifier {
         ? DateTime.fromMillisecondsSinceEpoch(startedMs)
         : null;
 
-    // No active mission means no reservation and no startedAt.
     if (activeQuestId == null) {
       reservedMp = 0;
       startedAt = null;
@@ -112,7 +109,6 @@ class StudyTimer extends ChangeNotifier {
 
     if (isRunning && endTime != null) {
       _updateRemaining();
-
       if (remainingSeconds <= 0) {
         remainingSeconds = 0;
         isRunning = false;
@@ -123,7 +119,6 @@ class StudyTimer extends ChangeNotifier {
         _startTicker();
       }
     } else if (isRunning && endTime == null) {
-      // Corrupted state: running but no endTime.
       isRunning = false;
       await _saveTimer();
     }
@@ -132,7 +127,9 @@ class StudyTimer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // START TIMER + RESERVE MP
+  // ============================================================
+  // START
+  // ============================================================
 
   Future<bool> start({
     required String questId,
@@ -143,15 +140,11 @@ class StudyTimer extends ChangeNotifier {
     if (!isLoaded || !player.isLoaded) return false;
     if (isRunning || activeQuestId != null) return false;
     if (durationMinutes <= 0) return false;
+    if (player.isCriticalHp) return false;
 
     final mpCost = calculateMpCost(durationMinutes);
+    if (availableMp(player) < mpCost) return false;
 
-    // CHECK AVAILABLE MP
-    if (availableMp(player) < mpCost) {
-      return false;
-    }
-
-    // RESERVE MP WITHOUT DEDUCTING IT
     activeQuestId = questId;
     reservedMp = mpCost;
 
@@ -169,24 +162,23 @@ class StudyTimer extends ChangeNotifier {
 
     await _saveTimer();
 
-    // Register start time with QuestSystem for deadline validation.
     if (questSystem != null) {
       await questSystem.registerTimerStart(questId, now);
     }
 
     _startTicker();
     notifyListeners();
-
     return true;
   }
 
-  // PAUSE TIMER
+  // ============================================================
+  // PAUSE
+  // ============================================================
 
   Future<void> pause() async {
     if (!isRunning) return;
 
     _updateRemaining();
-
     _ticker?.cancel();
     _ticker = null;
 
@@ -198,12 +190,13 @@ class StudyTimer extends ChangeNotifier {
       isFinished = true;
     }
 
-    // MP RESERVATION REMAINS ACTIVE.
     await _saveTimer();
     notifyListeners();
   }
 
-  // RESUME TIMER
+  // ============================================================
+  // RESUME
+  // ============================================================
 
   Future<void> resume() async {
     if (!isLoaded) return;
@@ -216,16 +209,45 @@ class StudyTimer extends ChangeNotifier {
 
     isRunning = true;
 
-    // EXISTING MP RESERVATION IS PRESERVED.
     await _saveTimer();
-
     _startTicker();
     notifyListeners();
   }
 
-  // CANCEL TIMER + RELEASE MP
+  // ============================================================
+  // CANCEL (with HP damage)
+  // ============================================================
 
-  Future<void> cancel() async {
+  /// Cancels the timer. Applies HP damage if the session ran long enough.
+  /// Returns the HP damage applied (0 if no damage).
+  Future<int> cancel({PlayerSystem? player}) async {
+    // Calculate cancel damage BEFORE clearing state.
+    int hpDamageApplied = 0;
+
+    if (player != null &&
+        player.isLoaded &&
+        startedAt != null &&
+        !isFinished) {
+      // Use total time since start (includes paused time) — session was wasted effort.
+      final elapsed = DateTime.now().difference(startedAt!);
+
+      if (elapsed >= _cancelDamageThreshold) {
+        final levelMultiplier = 1.0 + ((player.level - 1) * 0.05);
+        final rawDamage =
+            player.maxHp * (_cancelDamagePercent / 100.0) * levelMultiplier;
+        final cappedDamage = rawDamage.clamp(
+          0.0,
+          player.maxHp * _cancelDamageCapFraction,
+        );
+        final damage = cappedDamage.round();
+
+        hpDamageApplied = await player.applyHpDamage(
+          damage,
+          reason: 'Session Cancelled',
+        );
+      }
+    }
+
     _ticker?.cancel();
     _ticker = null;
 
@@ -238,11 +260,9 @@ class StudyTimer extends ChangeNotifier {
     isFinished = false;
     _isClaiming = false;
 
-    // RELEASE RESERVED MP WITHOUT DEDUCTION.
     reservedMp = 0;
 
     final prefs = await SharedPreferences.getInstance();
-
     await prefs.remove(_questIdKey);
     await prefs.remove(_endTimeKey);
     await prefs.remove(_remainingKey);
@@ -252,18 +272,19 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_startedAtKey);
 
     notifyListeners();
+    return hpDamageApplied;
   }
 
-  // TIMER TICKER
+  // ============================================================
+  // TICKER
+  // ============================================================
 
   void _startTicker() {
     _ticker?.cancel();
-
     _ticker = Timer.periodic(
       const Duration(seconds: 1),
       (_) async {
         if (!isRunning) return;
-
         _updateRemaining();
 
         if (remainingSeconds <= 0) {
@@ -271,10 +292,8 @@ class StudyTimer extends ChangeNotifier {
           isRunning = false;
           isFinished = true;
           endTime = null;
-
           _ticker?.cancel();
           _ticker = null;
-
           await _saveTimer();
         }
 
@@ -283,22 +302,17 @@ class StudyTimer extends ChangeNotifier {
     );
   }
 
-  // UPDATE REMAINING TIME
-
   void _updateRemaining() {
     if (endTime == null) return;
-
     final now = DateTime.now().millisecondsSinceEpoch;
     final difference = endTime! - now;
-
     remainingSeconds = (difference / 1000).ceil();
-
-    if (remainingSeconds < 0) {
-      remainingSeconds = 0;
-    }
+    if (remainingSeconds < 0) remainingSeconds = 0;
   }
 
-  // COMPLETE MISSION + DEDUCT RESERVED MP
+  // ============================================================
+  // COMPLETE QUEST
+  // ============================================================
 
   Future<int?> completeQuest(
     QuestSystem questSystem,
@@ -328,15 +342,11 @@ class StudyTimer extends ChangeNotifier {
       final studyMinutes = quest.durationMinutes;
       final mpToDeduct = reservedMp;
 
-      debugPrint('CLAIM START: $questId');
-      debugPrint('Reserved MP: $mpToDeduct');
-
       if (mpToDeduct <= 0) {
         debugPrint('CLAIM ERROR: Reserved MP is zero');
         return null;
       }
 
-      // COMPLETE QUEST FIRST.
       final earnedXp = await questSystem.completeQuest(questId, player);
 
       if (earnedXp == null) {
@@ -344,17 +354,11 @@ class StudyTimer extends ChangeNotifier {
         return null;
       }
 
-      // DEDUCT RESERVED MP ONLY AFTER SUCCESS.
       await player.setMp(player.mp - mpToDeduct);
-
-      // RECORD SUCCESSFUL STUDY TIME.
       await player.addStudyTime(studyMinutes);
 
-      debugPrint('CLAIM SUCCESS: +$earnedXp XP');
-      debugPrint('MP deducted: $mpToDeduct');
-
-      // CLEAR TIMER AND RELEASE RESERVATION.
-      await cancel();
+      // Clear WITHOUT applying cancel damage (successful claim).
+      await _clearSession();
 
       return earnedXp;
     } catch (error, stackTrace) {
@@ -366,7 +370,37 @@ class StudyTimer extends ChangeNotifier {
     }
   }
 
-  // SAVE TIMER + RESERVATION
+  /// Internal session clear — no cancel damage (used after claim).
+  Future<void> _clearSession() async {
+    _ticker?.cancel();
+    _ticker = null;
+
+    activeQuestId = null;
+    remainingSeconds = 0;
+    endTime = null;
+    startedAt = null;
+
+    isRunning = false;
+    isFinished = false;
+    _isClaiming = false;
+
+    reservedMp = 0;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_questIdKey);
+    await prefs.remove(_endTimeKey);
+    await prefs.remove(_remainingKey);
+    await prefs.remove(_runningKey);
+    await prefs.remove(_finishedKey);
+    await prefs.remove(_reservedMpKey);
+    await prefs.remove(_startedAtKey);
+
+    notifyListeners();
+  }
+
+  // ============================================================
+  // SAVE
+  // ============================================================
 
   Future<void> _saveTimer() async {
     final prefs = await SharedPreferences.getInstance();

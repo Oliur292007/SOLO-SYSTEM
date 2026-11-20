@@ -155,7 +155,6 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
   Future<void> _loadTheme() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-
     setState(() {
       isDarkMode = prefs.getBool('dark_mode') ?? true;
     });
@@ -165,7 +164,6 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
     setState(() {
       isDarkMode = value;
     });
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('dark_mode', value);
   }
@@ -262,7 +260,7 @@ class _SystemHomeState extends State<SystemHome> {
         widget.questSystem,
         widget.studyTimer,
         widget.restSystem,
-        widget.timetableSystem, // ✅ S4: sync timetable changes
+        widget.timetableSystem,
       ]),
       builder: (context, child) {
         final pages = [
@@ -361,7 +359,7 @@ class DashboardPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
-        // ============ HEADER ============
+        // HEADER
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -402,7 +400,7 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 25),
 
-        // ============ PLAYER PROFILE ============
+        // PLAYER PROFILE
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
@@ -478,9 +476,7 @@ class DashboardPage extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 22),
-
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -494,9 +490,7 @@ class DashboardPage extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 9),
-
               ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: LinearProgressIndicator(
@@ -506,9 +500,7 @@ class DashboardPage extends StatelessWidget {
                   color: c.cyan,
                 ),
               ),
-
               const SizedBox(height: 9),
-
               Text(
                 '${(player.xpRequired - player.xp).clamp(0, 999999)} XP REQUIRED FOR NEXT LEVEL',
                 style: TextStyle(color: c.muted, fontSize: 9),
@@ -523,17 +515,12 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
+        // HP + MP CARDS (with HP warning)
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: VitalCard(
-                title: 'HP',
-                value: '${player.hp} / ${player.maxHp}',
-                icon: Icons.favorite,
-                color: const Color(0xFFFF526D),
-                progress: player.hpProgress,
-              ),
+              child: _HpVitalCard(player: player),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -548,14 +535,13 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 18),
 
-        // ============ SHORT REST ============
+        // SHORT REST
         AnimatedBuilder(
           animation: restSystem,
           builder: (context, child) {
             final active = restSystem.isShortRestActive;
             final minutes = restSystem.elapsedShortRestMinutes;
             final recoveryRemaining = restSystem.shortRestTimeToNextRecovery;
-
             final recoveryMinutes = recoveryRemaining.inMinutes;
             final recoverySeconds = recoveryRemaining.inSeconds.remainder(60);
 
@@ -649,7 +635,7 @@ class DashboardPage extends StatelessWidget {
           },
         ),
 
-        // ============ LONG REST ============
+        // LONG REST
         if (restSystem.isLongRestActive)
           Container(
             margin: const EdgeInsets.only(top: 14),
@@ -700,34 +686,42 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 24),
 
-        // ============ APP RESTRICTION STATUS ============
+        // APP RESTRICTION STATUS
         AnimatedBuilder(
           animation: questSystem,
           builder: (context, child) {
             final isPenalty = questSystem.isPenaltyActive;
             final isNight = questSystem.isNightLockActive;
+            final isHpCritical = player.isCriticalHp;
 
-            final Color statusColor = isPenalty
+            final Color statusColor = isHpCritical
                 ? Colors.redAccent
-                : isNight
-                    ? Colors.blueAccent
-                    : Colors.greenAccent;
+                : isPenalty
+                    ? Colors.redAccent
+                    : isNight
+                        ? Colors.blueAccent
+                        : Colors.greenAccent;
 
-            final IconData statusIcon = isPenalty
-                ? Icons.shield
-                : isNight
-                    ? Icons.nightlight_round
-                    : Icons.lock_open;
+            final IconData statusIcon = isHpCritical
+                ? Icons.warning
+                : isPenalty
+                    ? Icons.shield
+                    : isNight
+                        ? Icons.nightlight_round
+                        : Icons.lock_open;
 
-            final String statusTitle = isPenalty
-                ? 'PENALTY LOCK'
-                : isNight
-                    ? 'NIGHT LOCK'
-                    : 'SYSTEM UNLOCKED';
+            final String statusTitle = isHpCritical
+                ? 'HP CRITICAL'
+                : isPenalty
+                    ? 'PENALTY LOCK'
+                    : isNight
+                        ? 'NIGHT LOCK'
+                        : 'SYSTEM UNLOCKED';
 
             String remainingText;
-
-            if (isPenalty) {
+            if (isHpCritical) {
+              remainingText = 'Take a rest to recover HP before continuing.';
+            } else if (isPenalty) {
               final remaining = questSystem.penaltyRemaining;
               final hours = remaining.inHours;
               final minutes = remaining.inMinutes.remainder(60);
@@ -798,7 +792,7 @@ class DashboardPage extends StatelessWidget {
           },
         ),
 
-        // ============ TODAY'S SCHEDULE (with completion status) ============
+        // TODAY'S SCHEDULE
         AnimatedBuilder(
           animation: timetableSystem,
           builder: (context, child) {
@@ -858,8 +852,8 @@ class DashboardPage extends StatelessWidget {
                     )
                   else
                     ...todaySchedules.take(3).map((item) {
-                      final isCompleted = item.completedDate ==
-                          timetableSystem.todayKey;
+                      final isCompleted =
+                          item.completedDate == timetableSystem.todayKey;
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -870,9 +864,7 @@ class DashboardPage extends StatelessWidget {
                                   ? Icons.check_circle
                                   : Icons.schedule,
                               size: 17,
-                              color: isCompleted
-                                  ? Colors.green
-                                  : c.cyan,
+                              color: isCompleted ? Colors.green : c.cyan,
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -957,7 +949,7 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        // ============ DAILY QUEST PROGRESS ============
+        // DAILY QUEST PROGRESS
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1093,6 +1085,135 @@ class DashboardPage extends StatelessWidget {
 }
 
 // ============================================================
+// HP VITAL CARD (with warnings)
+// ============================================================
+
+class _HpVitalCard extends StatelessWidget {
+  final PlayerSystem player;
+
+  const _HpVitalCard({required this.player});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SystemColors.of(context);
+
+    final isCritical = player.isCriticalHp;
+    final isLow = player.isLowHp;
+
+    final Color hpColor = isCritical
+        ? Colors.red
+        : isLow
+            ? Colors.orange
+            : const Color(0xFFFF526D);
+
+    final Color borderColor = isCritical
+        ? Colors.red.withValues(alpha: 0.8)
+        : isLow
+            ? Colors.orange.withValues(alpha: 0.6)
+            : hpColor.withValues(alpha: 0.35);
+
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: c.panel,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(
+          color: borderColor,
+          width: isCritical ? 2.0 : 1.0,
+        ),
+        boxShadow: isCritical
+            ? [
+                BoxShadow(
+                  color: Colors.red.withValues(alpha: 0.25),
+                  blurRadius: 12,
+                ),
+              ]
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.favorite, color: hpColor, size: 18),
+              const SizedBox(width: 8),
+              Text('HP', style: TextStyle(color: hpColor)),
+              const Spacer(),
+              if (isCritical)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    'CRITICAL',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                )
+              else if (isLow)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    'LOW',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Text(
+            '${player.hp} / ${player.maxHp}',
+            style: TextStyle(
+              color: c.text,
+              fontWeight: FontWeight.bold,
+              fontSize: 17,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: LinearProgressIndicator(
+              value: player.hpProgress.clamp(0.0, 1.0),
+              minHeight: 5,
+              backgroundColor: c.barTrack,
+              color: hpColor,
+            ),
+          ),
+          if (isCritical) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Rest required to continue.',
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
 // MP VITAL CARD
 // ============================================================
 
@@ -1173,70 +1294,6 @@ class SectionTitle extends StatelessWidget {
         fontWeight: FontWeight.bold,
         fontSize: 13,
         letterSpacing: 2,
-      ),
-    );
-  }
-}
-
-class VitalCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color color;
-  final double? progress;
-
-  const VitalCard({
-    super.key,
-    required this.title,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.progress,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = SystemColors.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: c.panel,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 18),
-              const SizedBox(width: 8),
-              Text(title, style: TextStyle(color: color)),
-            ],
-          ),
-          const SizedBox(height: 13),
-          Text(
-            value,
-            style: TextStyle(
-              color: c.text,
-              fontWeight: FontWeight.bold,
-              fontSize: 17,
-            ),
-          ),
-          if (progress != null) ...[
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: LinearProgressIndicator(
-                value: progress!.clamp(0.0, 1.0),
-                minHeight: 5,
-                backgroundColor: c.barTrack,
-                color: color,
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }
@@ -1443,9 +1500,45 @@ class QuestPage extends StatelessWidget {
               style: TextStyle(color: c.muted),
             ),
 
+            // HP CRITICAL BANNER
+            if (player.isCriticalHp) ...[
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.red.withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning,
+                      color: Colors.red,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'HP CRITICAL — Take a rest before starting any mission.',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             const SizedBox(height: 20),
 
-            // ============ ACTIVE STUDY SESSION ============
+            // ACTIVE STUDY SESSION
             if (activeId != null)
               Container(
                 padding: const EdgeInsets.all(18),
@@ -1499,9 +1592,7 @@ class QuestPage extends StatelessWidget {
                           ),
                       ],
                     ),
-
                     const SizedBox(height: 14),
-
                     Center(
                       child: Text(
                         studyTimer.formattedTime,
@@ -1513,9 +1604,7 @@ class QuestPage extends StatelessWidget {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
                     Center(
                       child: Text(
                         _activeSessionStatus(studyTimer),
@@ -1527,12 +1616,9 @@ class QuestPage extends StatelessWidget {
                         textAlign: TextAlign.center,
                       ),
                     ),
-
                     const SizedBox(height: 14),
                     _sessionMetaRow(context, studyTimer, questSystem),
-
                     const SizedBox(height: 14),
-
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -1557,8 +1643,7 @@ class QuestPage extends StatelessWidget {
                                 player,
                               );
                               if (!context.mounted) return;
-                              final messenger =
-                                  ScaffoldMessenger.of(context);
+                              final messenger = ScaffoldMessenger.of(context);
                               messenger.clearSnackBars();
                               messenger.showSnackBar(
                                 SnackBar(
@@ -1574,35 +1659,11 @@ class QuestPage extends StatelessWidget {
                             label: const Text('Claim XP'),
                           ),
                         OutlinedButton.icon(
-                          onPressed: () async {
-                            final confirmed = await showDialog<bool>(
-                              context: context,
-                              builder: (dialogContext) => AlertDialog(
-                                title: const Text('Cancel Session?'),
-                                content: const Text(
-                                  'Your progress will not be saved and reserved MP will be released.',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(dialogContext, false),
-                                    child: const Text('KEEP'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(dialogContext, true),
-                                    child: const Text(
-                                      'CANCEL SESSION',
-                                      style: TextStyle(color: Colors.red),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (confirmed == true) {
-                              await studyTimer.cancel();
-                            }
-                          },
+                          onPressed: () => _handleCancelSession(
+                            context,
+                            studyTimer,
+                            player,
+                          ),
                           icon: const Icon(Icons.close, size: 18),
                           label: const Text('Cancel'),
                         ),
@@ -1612,7 +1673,7 @@ class QuestPage extends StatelessWidget {
                 ),
               ),
 
-            // ============ EMPTY STATE ============
+            // EMPTY STATE
             if (quests.isEmpty)
               Container(
                 padding: const EdgeInsets.all(28),
@@ -1646,7 +1707,7 @@ class QuestPage extends StatelessWidget {
                 ),
               ),
 
-            // ============ DAILY MISSIONS ============
+            // DAILY MISSIONS
             ...quests.map((quest) {
               final state = questSystem.getQuestState(quest.id);
               final isActive = activeId == quest.id;
@@ -1731,9 +1792,7 @@ class QuestPage extends StatelessWidget {
                           ),
                       ],
                     ),
-
                     const SizedBox(height: 6),
-
                     if (!isFixedMission)
                       Text(
                         '${quest.durationMinutes} min • ${quest.xpReward} XP',
@@ -1744,9 +1803,7 @@ class QuestPage extends StatelessWidget {
                         quest.subject,
                         style: TextStyle(color: c.muted),
                       ),
-
                     const SizedBox(height: 12),
-
                     _questStateWidget(
                       context: context,
                       quest: quest,
@@ -1767,6 +1824,108 @@ class QuestPage extends StatelessWidget {
         );
       },
     );
+  }
+
+  Future<void> _handleCancelSession(
+    BuildContext context,
+    StudyTimer studyTimer,
+    PlayerSystem player,
+  ) async {
+    final startedAt = studyTimer.startedAtTime;
+    final elapsed = startedAt != null
+        ? DateTime.now().difference(startedAt)
+        : Duration.zero;
+    final willTakeDamage =
+        startedAt != null && !studyTimer.isFinished && elapsed.inMinutes >= 5;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final damage = willTakeDamage
+            ? _calculateCancelDamage(player)
+            : 0;
+
+        return AlertDialog(
+          title: const Text('Cancel Session?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Your progress will not be saved and reserved MP will be released.',
+              ),
+              if (willTakeDamage) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.red.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.warning_amber,
+                        color: Colors.red,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'You will lose $damage HP for cancelling an active session.',
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('KEEP'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(
+                willTakeDamage ? 'CANCEL & LOSE HP' : 'CANCEL SESSION',
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      final damage = await studyTimer.cancel(player: player);
+      if (!context.mounted) return;
+      if (damage > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Session cancelled. -$damage HP'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+  }
+
+  int _calculateCancelDamage(PlayerSystem player) {
+    final levelMultiplier = 1.0 + ((player.level - 1) * 0.05);
+    final rawDamage = player.maxHp * 0.08 * levelMultiplier;
+    final capped = rawDamage.clamp(0.0, player.maxHp * 0.40);
+    return capped.round();
   }
 
   String _activeSessionStatus(StudyTimer timer) {
@@ -1825,7 +1984,7 @@ class QuestPage extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  'Deadline passed — but claim is still valid (started in time).',
+                  'Deadline passed — claim still valid (started in time).',
                   style: TextStyle(
                     color: Colors.amber,
                     fontSize: 10,
@@ -1884,7 +2043,6 @@ class QuestPage extends StatelessWidget {
   }) {
     final c = SystemColors.of(context);
 
-    // COMPLETED
     if (state == QuestState.completed) {
       return Row(
         children: [
@@ -1903,7 +2061,6 @@ class QuestPage extends StatelessWidget {
       );
     }
 
-    // SKIPPED (optional miss)
     if (state == QuestState.skipped) {
       return Row(
         children: [
@@ -1923,7 +2080,6 @@ class QuestPage extends StatelessWidget {
       );
     }
 
-    // MISSED (mandatory fail)
     if (state == QuestState.missed) {
       return Row(
         children: [
@@ -1942,7 +2098,6 @@ class QuestPage extends StatelessWidget {
       );
     }
 
-    // ACTIVE
     if (isActive) {
       return Row(
         children: [
@@ -1961,7 +2116,6 @@ class QuestPage extends StatelessWidget {
       );
     }
 
-    // UPCOMING
     if (state == QuestState.upcoming) {
       final availableAt = quest.availableFrom;
       final availableLabel = availableAt == null
@@ -1981,24 +2135,42 @@ class QuestPage extends StatelessWidget {
       );
     }
 
-    // AVAILABLE → buttons
     if (isFixedMission) {
-      return ElevatedButton(
-        onPressed: () async {
-          final xp = await questSystem.completeFixedMission(quest.id, player);
-          if (context.mounted && xp != null) {
-            final messenger = ScaffoldMessenger.of(context);
-            messenger.clearSnackBars();
-            messenger.showSnackBar(
-              SnackBar(content: Text('${quest.name} completed! +$xp XP')),
-            );
-          }
-        },
-        child: const Text('Complete'),
+      final blocked = player.isCriticalHp;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ElevatedButton(
+            onPressed: blocked
+                ? null
+                : () async {
+                    final xp = await questSystem.completeFixedMission(
+                      quest.id,
+                      player,
+                    );
+                    if (context.mounted && xp != null) {
+                      final messenger = ScaffoldMessenger.of(context);
+                      messenger.clearSnackBars();
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text('${quest.name} completed! +$xp XP'),
+                        ),
+                      );
+                    }
+                  },
+            child: const Text('Complete'),
+          ),
+          if (blocked) ...[
+            const SizedBox(height: 6),
+            Text(
+              'HP CRITICAL — Rest required.',
+              style: TextStyle(color: Colors.red, fontSize: 10),
+            ),
+          ],
+        ],
       );
     }
 
-    // TIMETABLE MISSION — Start Study
     final canStart = questSystem.canStartTimer(quest.id);
     final blockedReason = anotherActive
         ? 'Another session active'
@@ -2026,7 +2198,7 @@ class QuestPage extends StatelessWidget {
                   if (!ok && context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Unable to start: insufficient MP or busy.'),
+                        content: Text('Unable to start: insufficient MP, HP, or busy.'),
                       ),
                     );
                   }
@@ -2037,7 +2209,15 @@ class QuestPage extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             blockedReason,
-            style: TextStyle(color: c.muted, fontSize: 10),
+            style: TextStyle(
+              color: blockedReason.contains('HP')
+                  ? Colors.red
+                  : c.muted,
+              fontSize: 10,
+              fontWeight: blockedReason.contains('HP')
+                  ? FontWeight.w600
+                  : FontWeight.normal,
+            ),
           ),
         ],
       ],
@@ -2132,6 +2312,60 @@ class StatusPage extends StatelessWidget {
             ),
           ],
         ),
+
+        // HP DAMAGE HISTORY (if any)
+        if (player.hpDamageHistory.isNotEmpty) ...[
+          const SizedBox(height: 22),
+          const SectionTitle(title: 'RECENT HP DAMAGE'),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: c.panel,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.redAccent.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ...player.hpDamageHistory.reversed.take(5).map(
+                  (event) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.remove_circle,
+                          color: Colors.redAccent,
+                          size: 15,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            event.reason,
+                            style: TextStyle(
+                              color: c.text,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '-${event.damage} HP',
+                          style: const TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
 
         const SizedBox(height: 20),
       ],

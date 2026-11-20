@@ -1,6 +1,33 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class HpDamageEvent {
+  final String reason;
+  final int damage;
+  final DateTime timestamp;
+
+  const HpDamageEvent({
+    required this.reason,
+    required this.damage,
+    required this.timestamp,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'reason': reason,
+        'damage': damage,
+        'timestamp': timestamp.millisecondsSinceEpoch,
+      };
+
+  factory HpDamageEvent.fromJson(Map<String, dynamic> json) {
+    return HpDamageEvent(
+      reason: json['reason'] as String,
+      damage: json['damage'] as int,
+      timestamp:
+          DateTime.fromMillisecondsSinceEpoch(json['timestamp'] as int),
+    );
+  }
+}
+
 class PlayerSystem extends ChangeNotifier {
   // PLAYER DATA KEYS
   static const String _nameKey = 'player_name';
@@ -19,6 +46,10 @@ class PlayerSystem extends ChangeNotifier {
   static const String _strengthKey = 'player_strength';
   static const String _intellectKey = 'player_intellect';
 
+  // HP DAMAGE HISTORY
+  static const String _hpDamageHistoryKey = 'hp_damage_history';
+  static const int _maxHistoryEntries = 20;
+
   String playerName = 'Shadow Hunter';
 
   int level = 1;
@@ -34,6 +65,9 @@ class PlayerSystem extends ChangeNotifier {
 
   int strength = 0;
   int intellect = 0;
+
+  /// Recent HP damage events (newest last).
+  final List<HpDamageEvent> hpDamageHistory = [];
 
   String _studyDate = '';
 
@@ -53,6 +87,16 @@ class PlayerSystem extends ChangeNotifier {
       (strength / 100).clamp(0.0, 1.0).toDouble();
   double get intellectProgress =>
       (intellect / 100).clamp(0.0, 1.0).toDouble();
+
+  // ============================================================
+  // HP CRITICAL STATE
+  // ============================================================
+
+  /// True when HP is depleted — player cannot start quests.
+  bool get isCriticalHp => hp <= 0;
+
+  /// HP percentage threshold for warning UI.
+  bool get isLowHp => hpProgress < 0.25 && hp > 0;
 
   // ============================================================
   // XP SYSTEM
@@ -134,26 +178,47 @@ class PlayerSystem extends ChangeNotifier {
 
     _studyDate = prefs.getString(_studyDateKey) ?? '';
 
-    // LOAD ATTRIBUTES
     hp = prefs.getInt(_hpKey) ?? 100;
     mp = prefs.getInt(_mpKey) ?? 100;
     strength = prefs.getInt(_strengthKey) ?? 0;
     intellect = prefs.getInt(_intellectKey) ?? 0;
 
-    // HANDLE LEVEL-BASED MAXIMUMS
+    // Load damage history
+    hpDamageHistory.clear();
+    final historyRaw = prefs.getStringList(_hpDamageHistoryKey);
+    if (historyRaw != null) {
+      try {
+        for (final entry in historyRaw) {
+          // Store as simple string "reason|damage|timestamp"
+          final parts = entry.split('|');
+          if (parts.length != 3) continue;
+          hpDamageHistory.add(
+            HpDamageEvent(
+              reason: parts[0],
+              damage: int.parse(parts[1]),
+              timestamp: DateTime.fromMillisecondsSinceEpoch(
+                int.parse(parts[2]),
+              ),
+            ),
+          );
+        }
+      } catch (_) {
+        hpDamageHistory.clear();
+      }
+    }
+
+    // Clamp
     hp = hp.clamp(0, maxHp);
     mp = mp.clamp(0, maxMp);
 
-    // DAILY STUDY RESET
+    // Daily study reset
     final currentKey = _currentDateKey;
     if (_studyDate != currentKey) {
       _studyDate = currentKey;
       todayStudyMinutes = 0;
-      await _saveAll();
-    } else {
-      // Defensive save (ensures everything is committed).
-      await _saveAll();
     }
+
+    await _saveAll();
 
     isLoaded = true;
     notifyListeners();
@@ -192,7 +257,6 @@ class PlayerSystem extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Public method for future use (e.g., manual reset).
   Future<void> resetDailyStudy() async {
     _studyDate = _currentDateKey;
     todayStudyMinutes = 0;
@@ -218,8 +282,6 @@ class PlayerSystem extends ChangeNotifier {
       leveledUp = true;
     }
 
-    // Max HP/MP increases on level up.
-    // Current HP/MP is NOT auto-refilled.
     hp = hp.clamp(0, maxHp);
     mp = mp.clamp(0, maxMp);
 
@@ -229,7 +291,7 @@ class PlayerSystem extends ChangeNotifier {
   }
 
   // ============================================================
-  // HP / MP
+  // HP / MP — BASIC
   // ============================================================
 
   Future<void> setHp(int value) async {
@@ -255,6 +317,52 @@ class PlayerSystem extends ChangeNotifier {
     if (amount <= 0) return;
     mp = (mp + amount).clamp(0, maxMp);
     await _saveAttributes();
+    notifyListeners();
+  }
+
+  // ============================================================
+  // HP DAMAGE — NEW
+  // ============================================================
+
+  /// Applies HP damage (already-calculated integer amount).
+  /// Returns the actual damage dealt (clamped to current HP).
+  /// Logs to history for future stats UI.
+  Future<int> applyHpDamage(
+    int damage, {
+    String? reason,
+  }) async {
+    if (damage <= 0) return 0;
+    if (hp <= 0) return 0; // already critical
+
+    final actualDamage = damage.clamp(0, hp);
+    hp = (hp - damage).clamp(0, maxHp);
+
+    // Log event
+    hpDamageHistory.add(
+      HpDamageEvent(
+        reason: reason ?? 'Unknown',
+        damage: actualDamage,
+        timestamp: DateTime.now(),
+      ),
+    );
+    if (hpDamageHistory.length > _maxHistoryEntries) {
+      hpDamageHistory.removeRange(
+        0,
+        hpDamageHistory.length - _maxHistoryEntries,
+      );
+    }
+
+    await _saveAttributes();
+    await _saveHpDamageHistory();
+    notifyListeners();
+
+    return actualDamage;
+  }
+
+  /// Clears damage history (future UI action).
+  Future<void> clearHpDamageHistory() async {
+    hpDamageHistory.clear();
+    await _saveHpDamageHistory();
     notifyListeners();
   }
 
@@ -311,5 +419,13 @@ class PlayerSystem extends ChangeNotifier {
     await prefs.setInt(_mpKey, mp);
     await prefs.setInt(_strengthKey, strength);
     await prefs.setInt(_intellectKey, intellect);
+  }
+
+  Future<void> _saveHpDamageHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = hpDamageHistory
+        .map((e) => '${e.reason}|${e.damage}|${e.timestamp.millisecondsSinceEpoch}')
+        .toList();
+    await prefs.setStringList(_hpDamageHistoryKey, encoded);
   }
 }
