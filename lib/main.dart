@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'player_system.dart';
 import 'quest_system.dart';
@@ -8,6 +9,8 @@ import 'timetable_page.dart';
 import 'rest_system.dart';
 import 'uid_manager.dart';
 import 'supabase_service.dart';
+import 'security_controller.dart';
+import 'security_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,6 +43,13 @@ Future<void> main() async {
     );
   }
 
+  // Security Controller
+  final securityController = SecurityController(
+    uidManager: uidManager,
+    supabaseService: supabaseService,
+  );
+  await securityController.initialize();
+
   // Attach UID to player
   player.attachUid(uidManager.uid, uidManager.isRegistered);
 
@@ -52,6 +62,7 @@ Future<void> main() async {
       restSystem: restSystem,
       uidManager: uidManager,
       supabaseService: supabaseService,
+      securityController: securityController,
     ),
   );
 }
@@ -154,6 +165,7 @@ class SoloSystemApp extends StatefulWidget {
   final RestSystem restSystem;
   final UidManager uidManager;
   final SupabaseService supabaseService;
+  final SecurityController securityController;
 
   const SoloSystemApp({
     super.key,
@@ -164,6 +176,7 @@ class SoloSystemApp extends StatefulWidget {
     required this.restSystem,
     required this.uidManager,
     required this.supabaseService,
+    required this.securityController,
   });
 
   @override
@@ -233,6 +246,7 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
         restSystem: widget.restSystem,
         uidManager: widget.uidManager,
         supabaseService: widget.supabaseService,
+        securityController: widget.securityController,
       ),
     );
   }
@@ -248,6 +262,7 @@ class SystemHome extends StatefulWidget {
   final RestSystem restSystem;
   final UidManager uidManager;
   final SupabaseService supabaseService;
+  final SecurityController securityController;
 
   const SystemHome({
     super.key,
@@ -260,6 +275,7 @@ class SystemHome extends StatefulWidget {
     required this.restSystem,
     required this.uidManager,
     required this.supabaseService,
+    required this.securityController,
   });
 
   @override
@@ -300,6 +316,7 @@ class _SystemHomeState extends State<SystemHome> {
         widget.studyTimer,
         widget.restSystem,
         widget.timetableSystem,
+        widget.securityController,
       ]),
       builder: (context, child) {
         final pages = [
@@ -320,6 +337,7 @@ class _SystemHomeState extends State<SystemHome> {
             player: widget.player,
             uidManager: widget.uidManager,
             supabaseService: widget.supabaseService,
+            securityController: widget.securityController,
           ),
           SettingsPage(
             player: widget.player,
@@ -2227,12 +2245,14 @@ class StatusPage extends StatelessWidget {
   final PlayerSystem player;
   final UidManager uidManager;
   final SupabaseService supabaseService;
+  final SecurityController securityController;
 
   const StatusPage({
     super.key,
     required this.player,
     required this.uidManager,
     required this.supabaseService,
+    required this.securityController,
   });
 
   @override
@@ -2284,6 +2304,12 @@ class StatusPage extends StatelessWidget {
               ),
             ],
           ),
+        ),
+        const SizedBox(height: 18),
+        _UidSecurityCard(
+          securityController: securityController,
+          supabaseService: supabaseService,
+          uidManager: uidManager,
         ),
         const SizedBox(height: 22),
         const SectionTitle(title: 'ATTRIBUTES'),
@@ -2375,6 +2401,196 @@ class StatusPage extends StatelessWidget {
         children: [
           Text(label, style: TextStyle(color: c.muted, fontSize: 11)),
           Text(value, style: TextStyle(color: c.text, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// UID SECURITY CARD (inside StatusPage)
+// ============================================================
+
+class _UidSecurityCard extends StatelessWidget {
+  final SecurityController securityController;
+  final SupabaseService supabaseService;
+  final UidManager uidManager;
+
+  const _UidSecurityCard({
+    required this.securityController,
+    required this.supabaseService,
+    required this.uidManager,
+  });
+
+  Future<void> _copyUid(BuildContext context) async {
+    await Clipboard.setData(
+      ClipboardData(text: uidManager.uid ?? ''),
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('UID copied'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = uidManager.uid ?? '—';
+    final isRegistered = securityController.isRegistered;
+    final isOnline = securityController.isOnline;
+
+    final Color statusColor;
+    final String statusLabel;
+    if (isRegistered && isOnline) {
+      statusColor = Colors.greenAccent;
+      statusLabel = 'ONLINE';
+    } else if (isRegistered && !isOnline) {
+      statusColor = Colors.orangeAccent;
+      statusLabel = 'OFFLINE';
+    } else {
+      statusColor = Colors.redAccent;
+      statusLabel = 'PENDING';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.blue.shade900,
+            Colors.cyan.shade900,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.cyan.withValues(alpha: 0.15),
+            blurRadius: 16,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.fingerprint, color: Colors.cyan, size: 18),
+              const SizedBox(width: 8),
+              const Text(
+                'PLAYER UID',
+                style: TextStyle(
+                  color: Colors.cyan,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: statusColor.withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      statusLabel,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  uid,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.copy, color: Colors.cyan, size: 16),
+                onPressed: () => _copyUid(context),
+                tooltip: 'Copy UID',
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isRegistered
+                ? 'Registered with SOLO SYSTEM servers.'
+                : 'Not registered — connect to internet.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 10,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SecurityPage(
+                      controller: securityController,
+                      uidManager: uidManager,
+                      supabaseService: supabaseService,
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.cyan,
+                foregroundColor: Colors.black87,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+              ),
+              icon: const Icon(Icons.security, size: 16),
+              label: const Text(
+                'SECURITY & CODES',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
