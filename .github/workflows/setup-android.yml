@@ -1,7 +1,10 @@
 name: Setup Android Folder
 
 on:
-  workflow_dispatch: # ম্যানুয়ালি চালানোর জন্য
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   setup-android:
@@ -9,11 +12,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}  # ← PAT ব্যবহার
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.8' # অথবা আপনার ব্যবহৃত ভার্সন
+          flutter-version: '3.32.8'
           channel: 'stable'
 
       - name: Recreate Android folder
