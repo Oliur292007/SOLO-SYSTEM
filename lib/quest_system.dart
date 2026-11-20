@@ -48,26 +48,29 @@ class StudyQuest {
   }
 }
 
-/// UI-friendly state of a quest.
 enum QuestState {
   upcoming,   // not available yet
   available,  // can start
   active,     // timer running
   completed,  // genuinely completed (XP awarded)
-  missed,     // missed (optional -> no penalty, mandatory -> penalty handled separately)
-  locked,     // deadline passed and missed in the past (already penalized)
+  skipped,    // optional missed (no penalty)
+  missed,     // mandatory missed (penalty applied)
+  locked,     // fallback
 }
 
 class QuestSystem extends ChangeNotifier {
   static const String _dateKey = 'quest_date';
   static const String _completedKey = 'completed_quests';
   static const String _missedKey = 'missed_quests';
+  static const String _skippedKey = 'skipped_quests';
   static const String _snapshotKey = 'quest_snapshot';
   static const String _penaltyKey = 'penalty_until';
   static const String _nightLockKey = 'night_lock_active';
   static const String _timerStartsKey = 'quest_timer_starts';
 
   static const Duration penaltyDuration = Duration(hours: 4);
+
+  static const String _scheduleIdPrefix = 'schedule_';
 
   final TimetableSystem timetableSystem;
   final RestSystem restSystem;
@@ -79,16 +82,10 @@ class QuestSystem extends ChangeNotifier {
     timetableSystem.addListener(_onTimetableChanged);
   }
 
-  /// Quests that were actually completed (XP awarded).
   final Set<String> completedQuestIds = {};
-
-  /// Optional quests that were missed. These do NOT give penalty,
-  /// but must be excluded from "COMPLETED" UI.
   final Set<String> missedQuestIds = {};
+  final Set<String> skippedQuestIds = {};
 
-  /// Timer start time per quest (epoch millis). Used for deadline validation:
-  /// if a timer was legally started before deadline, claim is allowed even
-  /// after deadline.
   final Map<String, int> _timerStarts = {};
 
   bool isLoaded = false;
@@ -103,7 +100,9 @@ class QuestSystem extends ChangeNotifier {
   bool _isCheckingDeadlines = false;
   bool _isSavingSnapshot = false;
 
+  // ============================================================
   // DATE
+  // ============================================================
 
   String get todayKey {
     final now = DateTime.now();
@@ -117,7 +116,9 @@ class QuestSystem extends ChangeNotifier {
     return DateTime(now.year, now.month, now.day, hour, minute);
   }
 
+  // ============================================================
   // QUEST LIST
+  // ============================================================
 
   List<StudyQuest> get quests {
     final List<StudyQuest> result = [];
@@ -149,7 +150,7 @@ class QuestSystem extends ChangeNotifier {
 
       result.add(
         StudyQuest(
-          id: 'schedule_${schedule.id}',
+          id: '$_scheduleIdPrefix${schedule.id}',
           name: schedule.subject,
           subject: schedule.subject,
           durationMinutes: schedule.durationMinutes,
@@ -176,7 +177,9 @@ class QuestSystem extends ChangeNotifier {
     return result;
   }
 
+  // ============================================================
   // PROGRESS
+  // ============================================================
 
   int get totalQuests => quests.length;
   int get totalCount => totalQuests;
@@ -189,8 +192,8 @@ class QuestSystem extends ChangeNotifier {
   }
 
   bool isCompleted(String questId) => completedQuestIds.contains(questId);
-
   bool isMissed(String questId) => missedQuestIds.contains(questId);
+  bool isSkipped(String questId) => skippedQuestIds.contains(questId);
 
   StudyQuest? getQuestById(String questId) {
     for (final quest in quests) {
@@ -199,14 +202,23 @@ class QuestSystem extends ChangeNotifier {
     return null;
   }
 
-  /// Timer start time for a quest (null = never started today).
+  /// Extracts the underlying timetable schedule ID from a quest ID.
+  /// Returns null if the quest is not a timetable mission.
+  String? scheduleIdFromQuestId(String questId) {
+    if (!questId.startsWith(_scheduleIdPrefix)) return null;
+    return questId.substring(_scheduleIdPrefix.length);
+  }
+
+  // ============================================================
+  // TIMER DEADLINE VALIDATION
+  // ============================================================
+
   DateTime? timerStartedAt(String questId) {
     final ms = _timerStarts[questId];
     if (ms == null) return null;
     return DateTime.fromMillisecondsSinceEpoch(ms);
   }
 
-  /// Was this quest's timer started legally on or before its deadline?
   bool wasTimerStartedBeforeDeadline(String questId) {
     final quest = getQuestById(questId);
     if (quest == null || quest.deadline == null) return false;
@@ -217,19 +229,13 @@ class QuestSystem extends ChangeNotifier {
     return !startedAt.isAfter(quest.deadline!);
   }
 
-  /// Called by StudyTimer when a timer starts.
   Future<void> registerTimerStart(String questId, DateTime startedAt) async {
     _timerStarts[questId] = startedAt.millisecondsSinceEpoch;
 
     final prefs = await SharedPreferences.getInstance();
-    final encoded = _timerStarts.map(
-      (key, value) => MapEntry(key, value),
-    );
-    await prefs.setString(_timerStartsKey, jsonEncode(encoded));
+    await prefs.setString(_timerStartsKey, jsonEncode(_timerStarts));
   }
 
-  /// Can the user start the timer for this quest now?
-  /// Returns (bool allowed, String? reason).
   ({bool allowed, String? reason}) canStartTimer(String questId) {
     if (!isLoaded) {
       return (allowed: false, reason: 'System not loaded yet.');
@@ -257,19 +263,24 @@ class QuestSystem extends ChangeNotifier {
     return (allowed: true, reason: null);
   }
 
-  /// UI helper: which state is this quest in?
+  // ============================================================
+  // QUEST STATE
+  // ============================================================
+
   QuestState getQuestState(String questId) {
     final quest = getQuestById(questId);
     if (quest == null) return QuestState.locked;
 
     if (isCompleted(questId)) return QuestState.completed;
 
+    if (isSkipped(questId)) return QuestState.skipped;
+
     if (isMissed(questId)) return QuestState.missed;
 
     final now = DateTime.now();
 
     if (quest.deadline != null && now.isAfter(quest.deadline!)) {
-      return QuestState.missed;
+      return quest.isOptional ? QuestState.skipped : QuestState.missed;
     }
 
     if (quest.availableFrom != null && now.isBefore(quest.availableFrom!)) {
@@ -279,16 +290,16 @@ class QuestSystem extends ChangeNotifier {
     return QuestState.available;
   }
 
+  // ============================================================
   // LOCK STATUS
+  // ============================================================
 
   bool get isPenaltyActive {
     if (penaltyUntil == null) return false;
     return DateTime.now().isBefore(penaltyUntil!);
   }
 
-  bool get isAppLockActive {
-    return isPenaltyActive || isNightLockActive;
-  }
+  bool get isAppLockActive => isPenaltyActive || isNightLockActive;
 
   String get lockStatus {
     if (isPenaltyActive) return 'PENALTY ACTIVE';
@@ -302,7 +313,9 @@ class QuestSystem extends ChangeNotifier {
     return remaining.isNegative ? Duration.zero : remaining;
   }
 
+  // ============================================================
   // LOAD
+  // ============================================================
 
   Future<void> loadQuests() async {
     if (!restSystem.isLoaded) {
@@ -314,16 +327,18 @@ class QuestSystem extends ChangeNotifier {
     final savedDate = prefs.getString(_dateKey);
     final savedCompleted = prefs.getStringList(_completedKey);
     final savedMissed = prefs.getStringList(_missedKey);
+    final savedSkipped = prefs.getStringList(_skippedKey);
 
     completedQuestIds
       ..clear()
       ..addAll(savedCompleted ?? []);
-
     missedQuestIds
       ..clear()
       ..addAll(savedMissed ?? []);
+    skippedQuestIds
+      ..clear()
+      ..addAll(savedSkipped ?? []);
 
-    // Load timer starts map
     _timerStarts.clear();
     final timerStartsRaw = prefs.getString(_timerStartsKey);
     if (timerStartsRaw != null && timerStartsRaw.isNotEmpty) {
@@ -351,16 +366,17 @@ class QuestSystem extends ChangeNotifier {
 
       completedQuestIds.clear();
       missedQuestIds.clear();
+      skippedQuestIds.clear();
       _timerStarts.clear();
 
       final now = DateTime.now();
       if (now.isAfter(_dateAt(8, 30))) {
-        // Wakeup missed on first-ever launch after 8:30.
         completedQuestIds.add('wakeup');
       }
 
       await _saveCompleted();
       await _saveMissed();
+      await _saveSkipped();
       await _saveTimerStarts();
       await _saveDate();
       await _saveQuestSnapshot();
@@ -371,12 +387,14 @@ class QuestSystem extends ChangeNotifier {
 
       completedQuestIds.clear();
       missedQuestIds.clear();
+      skippedQuestIds.clear();
       _timerStarts.clear();
 
       _loadedDateKey = todayKey;
 
       await _saveCompleted();
       await _saveMissed();
+      await _saveSkipped();
       await _saveTimerStarts();
       await _saveDate();
       await _saveQuestSnapshot();
@@ -389,19 +407,59 @@ class QuestSystem extends ChangeNotifier {
 
     isLoaded = true;
 
+    await _cleanupOrphanQuestIds();
     await _checkDeadlines();
     _startDeadlineChecker();
     notifyListeners();
   }
 
+  /// Removes completed/missed/skipped quest IDs whose underlying
+  /// timetable schedule no longer exists.
+  Future<void> _cleanupOrphanQuestIds() async {
+    final validScheduleIds =
+        timetableSystem.allSchedules.map((s) => s.id).toSet();
+
+    bool changed = false;
+
+    void cleanup(Set<String> set) {
+      final toRemove = <String>[];
+      for (final questId in set) {
+        final scheduleId = scheduleIdFromQuestId(questId);
+        if (scheduleId == null) continue; // wakeup/sleeping
+        if (!validScheduleIds.contains(scheduleId)) {
+          toRemove.add(questId);
+        }
+      }
+      if (toRemove.isNotEmpty) {
+        for (final id in toRemove) {
+          set.remove(id);
+          _timerStarts.remove(id);
+        }
+        changed = true;
+      }
+    }
+
+    cleanup(completedQuestIds);
+    cleanup(missedQuestIds);
+    cleanup(skippedQuestIds);
+
+    if (changed) {
+      await _saveCompleted();
+      await _saveMissed();
+      await _saveSkipped();
+      await _saveTimerStarts();
+    }
+  }
+
+  // ============================================================
   // COMPLETE FIXED MISSION
+  // ============================================================
 
   Future<int?> completeFixedMission(
     String questId,
     PlayerSystem player,
   ) async {
     if (!isLoaded) return null;
-
     if (questId != 'wakeup' && questId != 'sleeping') return null;
 
     final quest = getQuestById(questId);
@@ -412,7 +470,9 @@ class QuestSystem extends ChangeNotifier {
     return _completeMission(quest, player);
   }
 
+  // ============================================================
   // COMPLETE TIMER MISSION
+  // ============================================================
 
   Future<int?> completeQuest(
     String questId,
@@ -425,16 +485,13 @@ class QuestSystem extends ChangeNotifier {
     if (!quest.requiresTimer) return null;
     if (isCompleted(questId)) return null;
     if (isMissed(questId)) return null;
+    if (isSkipped(questId)) return null;
 
-    // Not started before availableFrom? Block.
     if (quest.availableFrom != null &&
         DateTime.now().isBefore(quest.availableFrom!)) {
       return null;
     }
 
-    // Deadline enforcement:
-    // Allow claim AFTER deadline ONLY if timer was legally started
-    // before the deadline. Otherwise, block.
     if (quest.deadline != null &&
         DateTime.now().isAfter(quest.deadline!) &&
         !wasTimerStartedBeforeDeadline(questId)) {
@@ -445,14 +502,16 @@ class QuestSystem extends ChangeNotifier {
     return _completeMission(quest, player);
   }
 
+  // ============================================================
   // COMMON COMPLETION
+  // ============================================================
 
   Future<int?> _completeMission(
     StudyQuest quest,
     PlayerSystem player,
   ) async {
     if (isCompleted(quest.id)) return null;
-    if (isMissed(quest.id)) return null;
+    if (isSkipped(quest.id)) return null;
 
     if (quest.id == 'sleeping') {
       final started = await restSystem.startLongRest();
@@ -464,11 +523,18 @@ class QuestSystem extends ChangeNotifier {
     }
 
     completedQuestIds.add(quest.id);
-    // If it was previously marked missed (e.g., optional), clear it.
     missedQuestIds.remove(quest.id);
+    skippedQuestIds.remove(quest.id);
 
     await _saveCompleted();
     await _saveMissed();
+    await _saveSkipped();
+
+    // Notify timetable system if this is a timetable mission.
+    final scheduleId = scheduleIdFromQuestId(quest.id);
+    if (scheduleId != null) {
+      await timetableSystem.markCompleted(scheduleId, dateKey: todayKey);
+    }
 
     if (quest.id == 'sleeping') {
       isNightLockActive = true;
@@ -489,7 +555,9 @@ class QuestSystem extends ChangeNotifier {
     return earnedXp;
   }
 
+  // ============================================================
   // DEADLINE CHECKER
+  // ============================================================
 
   void _startDeadlineChecker() {
     _deadlineTimer?.cancel();
@@ -514,20 +582,20 @@ class QuestSystem extends ChangeNotifier {
       for (final quest in quests) {
         if (isCompleted(quest.id)) continue;
         if (isMissed(quest.id)) continue;
+        if (isSkipped(quest.id)) continue;
         if (quest.deadline == null) continue;
 
         if (!now.isAfter(quest.deadline!)) continue;
 
-        // If timer was legally started before deadline, DO NOT mark missed.
-        // The user can still claim (per spec).
+        // Timer legally started before deadline → allow future claim.
         if (quest.requiresTimer && wasTimerStartedBeforeDeadline(quest.id)) {
           continue;
         }
 
-        // Optional mission: miss = no penalty, but mark as missed.
+        // Optional mission: skipped (no penalty, no lock).
         if (quest.isOptional) {
-          missedQuestIds.add(quest.id);
-          await _saveMissed();
+          skippedQuestIds.add(quest.id);
+          await _saveSkipped();
           continue;
         }
 
@@ -564,7 +632,9 @@ class QuestSystem extends ChangeNotifier {
     }
   }
 
+  // ============================================================
   // DATE ROLLOVER
+  // ============================================================
 
   Future<void> _checkDateRollover() async {
     if (_loadedDateKey == todayKey) return;
@@ -576,18 +646,22 @@ class QuestSystem extends ChangeNotifier {
 
     completedQuestIds.clear();
     missedQuestIds.clear();
+    skippedQuestIds.clear();
     _timerStarts.clear();
 
     _loadedDateKey = todayKey;
 
     await _saveCompleted();
     await _saveMissed();
+    await _saveSkipped();
     await _saveTimerStarts();
     await _saveDate();
     await _saveQuestSnapshot();
   }
 
-  // EVALUATE PREVIOUS DAY
+  // ============================================================
+  // PREVIOUS DAY EVALUATION
+  // ============================================================
 
   Future<void> _evaluatePreviousDay(String? snapshotData) async {
     if (snapshotData == null || snapshotData.isEmpty) return;
@@ -605,17 +679,20 @@ class QuestSystem extends ChangeNotifier {
 
       for (final item in previousQuests) {
         final id = item['id'] as String;
+
+        // Cross-day safety: only evaluate entries from a previous day.
+        final itemDateKey = item['dateKey'] as String?;
+        if (itemDateKey != null && itemDateKey == todayKey) continue;
+
         final deadline =
             DateTime.fromMillisecondsSinceEpoch(item['deadline'] as int);
         final isOptional = item['optional'] as bool? ?? false;
-        final timerStarted =
-            (item['timerStarted'] as bool?) ?? false;
+        final timerStarted = (item['timerStarted'] as bool?) ?? false;
 
         if (completedQuestIds.contains(id)) continue;
-        if (isOptional) continue; // Optional miss => no penalty
+        if (isOptional) continue; // No penalty for optional
 
-        // Timer legally started before deadline? No penalty.
-        if (timerStarted) continue;
+        if (timerStarted) continue; // No penalty if started in time
 
         if (id == 'sleeping') {
           isNightLockActive = true;
@@ -639,7 +716,9 @@ class QuestSystem extends ChangeNotifier {
     await _savePenalty();
   }
 
+  // ============================================================
   // PENALTY
+  // ============================================================
 
   Future<void> _startPenalty(DateTime missedDeadline) async {
     final newPenaltyEnd = missedDeadline.add(penaltyDuration);
@@ -651,7 +730,9 @@ class QuestSystem extends ChangeNotifier {
     await _savePenalty();
   }
 
+  // ============================================================
   // SNAPSHOT
+  // ============================================================
 
   Future<void> _saveQuestSnapshot() async {
     if (_isSavingSnapshot) return;
@@ -659,44 +740,22 @@ class QuestSystem extends ChangeNotifier {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final oldData = prefs.getString(_snapshotKey);
 
       final Map<String, Map<String, dynamic>> snapshot = {};
 
-      if (oldData != null && oldData.isNotEmpty) {
-        try {
-          final List<dynamic> oldList = jsonDecode(oldData);
-          for (final entry in oldList) {
-            final item = Map<String, dynamic>.from(entry);
-            final id = item['id'] as String;
-            final deadline =
-                DateTime.fromMillisecondsSinceEpoch(item['deadline'] as int);
-            final alreadyCompleted = completedQuestIds.contains(id);
-            final isOptional = item['optional'] as bool? ?? false;
-            final timerStarted = (item['timerStarted'] as bool?) ?? false;
-
-            if (!alreadyCompleted &&
-                !isOptional &&
-                !timerStarted &&
-                DateTime.now().isAfter(deadline)) {
-              snapshot[id] = item;
-            }
-          }
-        } catch (_) {
-          snapshot.clear();
-        }
-      }
+      // Preserve only entries from TODAY that are still pending.
+      final today = todayKey;
 
       for (final quest in quests) {
         if (quest.deadline == null) continue;
         if (isCompleted(quest.id)) continue;
-        if (snapshot.containsKey(quest.id)) continue;
 
         snapshot[quest.id] = {
           'id': quest.id,
           'deadline': quest.deadline!.millisecondsSinceEpoch,
           'optional': quest.isOptional,
           'timerStarted': wasTimerStartedBeforeDeadline(quest.id),
+          'dateKey': today,
         };
       }
 
@@ -709,7 +768,9 @@ class QuestSystem extends ChangeNotifier {
     }
   }
 
+  // ============================================================
   // TIMETABLE CHANGE
+  // ============================================================
 
   void _onTimetableChanged() {
     if (!isLoaded) return;
@@ -717,12 +778,15 @@ class QuestSystem extends ChangeNotifier {
   }
 
   Future<void> _handleTimetableChange() async {
+    await _cleanupOrphanQuestIds();
     await _saveQuestSnapshot();
     await _checkDeadlines();
     notifyListeners();
   }
 
+  // ============================================================
   // PERSISTENCE
+  // ============================================================
 
   Future<void> _saveCompleted() async {
     final prefs = await SharedPreferences.getInstance();
@@ -732,6 +796,11 @@ class QuestSystem extends ChangeNotifier {
   Future<void> _saveMissed() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_missedKey, missedQuestIds.toList());
+  }
+
+  Future<void> _saveSkipped() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_skippedKey, skippedQuestIds.toList());
   }
 
   Future<void> _saveTimerStarts() async {

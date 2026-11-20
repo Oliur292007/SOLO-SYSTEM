@@ -34,7 +34,7 @@ void main() {
 }
 
 // ============================================================
-// THEME TOKENS (theme-aware — replaces hardcoded constants)
+// THEME TOKENS
 // ============================================================
 
 @immutable
@@ -262,6 +262,7 @@ class _SystemHomeState extends State<SystemHome> {
         widget.questSystem,
         widget.studyTimer,
         widget.restSystem,
+        widget.timetableSystem, // ✅ S4: sync timetable changes
       ]),
       builder: (context, child) {
         final pages = [
@@ -522,7 +523,6 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        // ============ VITALS (HP + MP with reserved info) ============
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -575,11 +575,7 @@ class DashboardPage extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(
-                        Icons.bedtime_outlined,
-                        color: c.cyan,
-                        size: 18,
-                      ),
+                      Icon(Icons.bedtime_outlined, color: c.cyan, size: 18),
                       const SizedBox(width: 8),
                       Text(
                         'SHORT REST',
@@ -802,7 +798,7 @@ class DashboardPage extends StatelessWidget {
           },
         ),
 
-        // ============ TODAY'S SCHEDULE ============
+        // ============ TODAY'S SCHEDULE (with completion status) ============
         AnimatedBuilder(
           animation: timetableSystem,
           builder: (context, child) {
@@ -861,39 +857,67 @@ class DashboardPage extends StatelessWidget {
                       ),
                     )
                   else
-                    ...todaySchedules.take(3).map(
-                          (item) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Row(
-                              children: [
-                                Icon(Icons.schedule, size: 17, color: c.cyan),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    item.subject,
-                                    style: TextStyle(color: c.text),
-                                  ),
-                                ),
-                                if (item.isOptional)
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 6),
-                                    child: Text(
-                                      'OPT',
-                                      style: TextStyle(
-                                        color: c.cyan,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                Text(
-                                  item.startTime,
-                                  style: TextStyle(color: c.muted),
-                                ),
-                              ],
+                    ...todaySchedules.take(3).map((item) {
+                      final isCompleted = item.completedDate ==
+                          timetableSystem.todayKey;
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isCompleted
+                                  ? Icons.check_circle
+                                  : Icons.schedule,
+                              size: 17,
+                              color: isCompleted
+                                  ? Colors.green
+                                  : c.cyan,
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                item.subject,
+                                style: TextStyle(
+                                  color: isCompleted ? c.muted : c.text,
+                                  decoration: isCompleted
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                ),
+                              ),
+                            ),
+                            if (item.isOptional)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: Text(
+                                  'OPT',
+                                  style: TextStyle(
+                                    color: c.cyan,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            if (isCompleted)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: Text(
+                                  'DONE',
+                                  style: TextStyle(
+                                    color: Colors.green,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            Text(
+                              item.startTime,
+                              style: TextStyle(color: c.muted),
+                            ),
+                          ],
                         ),
+                      );
+                    }),
                   if (todaySchedules.length > 3)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
@@ -1003,7 +1027,6 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        // ============ STATS (NO MORE HARDCODED SCREEN TIME) ============
         Row(
           children: [
             Expanded(
@@ -1070,7 +1093,7 @@ class DashboardPage extends StatelessWidget {
 }
 
 // ============================================================
-// MP VITAL CARD (with reserved breakdown)
+// MP VITAL CARD
 // ============================================================
 
 class _MpVitalCard extends StatelessWidget {
@@ -1239,6 +1262,8 @@ class QuestRow extends StatelessWidget {
     Color iconColor;
     Color textColor = c.text;
     TextDecoration? decoration;
+    String? badgeLabel;
+    Color? badgeColor;
 
     switch (state) {
       case QuestState.completed:
@@ -1247,11 +1272,21 @@ class QuestRow extends StatelessWidget {
         textColor = c.muted;
         decoration = TextDecoration.lineThrough;
         break;
+      case QuestState.skipped:
+        icon = Icons.remove_circle_outline;
+        iconColor = c.muted;
+        textColor = c.muted;
+        decoration = TextDecoration.lineThrough;
+        badgeLabel = 'SKIPPED';
+        badgeColor = c.muted;
+        break;
       case QuestState.missed:
         icon = Icons.cancel;
         iconColor = Colors.redAccent;
         textColor = c.muted;
         decoration = TextDecoration.lineThrough;
+        badgeLabel = 'MISSED';
+        badgeColor = Colors.redAccent;
         break;
       case QuestState.active:
         icon = Icons.play_circle;
@@ -1286,13 +1321,13 @@ class QuestRow extends StatelessWidget {
               ),
             ),
           ),
-          if (state == QuestState.missed)
+          if (badgeLabel != null)
             Padding(
               padding: const EdgeInsets.only(right: 6),
               child: Text(
-                'MISSED',
+                badgeLabel,
                 style: TextStyle(
-                  color: Colors.redAccent,
+                  color: badgeColor,
                   fontSize: 9,
                   fontWeight: FontWeight.bold,
                 ),
@@ -1382,7 +1417,7 @@ class QuestPage extends StatelessWidget {
         questSystem,
         studyTimer,
         restSystem,
-        player, // ✅ FIX: player listener so XP updates appear immediately
+        player,
       ]),
       builder: (context, child) {
         final activeId = studyTimer.activeQuestId;
@@ -1493,7 +1528,6 @@ class QuestPage extends StatelessWidget {
                       ),
                     ),
 
-                    // Session metadata
                     const SizedBox(height: 14),
                     _sessionMetaRow(context, studyTimer, questSystem),
 
@@ -1619,11 +1653,13 @@ class QuestPage extends StatelessWidget {
               final anotherActive = activeId != null && !isActive;
               final isFixedMission = !quest.requiresTimer;
 
-              // Color based on state
               final Color borderColor;
               switch (state) {
                 case QuestState.completed:
                   borderColor = Colors.green.withValues(alpha: 0.5);
+                  break;
+                case QuestState.skipped:
+                  borderColor = c.muted.withValues(alpha: 0.3);
                   break;
                 case QuestState.missed:
                   borderColor = Colors.redAccent.withValues(alpha: 0.5);
@@ -1632,8 +1668,6 @@ class QuestPage extends StatelessWidget {
                   borderColor = c.cyan;
                   break;
                 case QuestState.upcoming:
-                  borderColor = c.text.withValues(alpha: 0.10);
-                  break;
                 case QuestState.available:
                 case QuestState.locked:
                   borderColor = c.text.withValues(alpha: 0.10);
@@ -1661,13 +1695,15 @@ class QuestPage extends StatelessWidget {
                           child: Text(
                             quest.name,
                             style: TextStyle(
-                              color: state == QuestState.missed
+                              color: (state == QuestState.missed ||
+                                      state == QuestState.skipped)
                                   ? c.muted
                                   : c.text,
                               fontSize: 17,
                               fontWeight: FontWeight.bold,
-                              decoration: state == QuestState.completed ||
-                                      state == QuestState.missed
+                              decoration: (state == QuestState.completed ||
+                                      state == QuestState.missed ||
+                                      state == QuestState.skipped)
                                   ? TextDecoration.lineThrough
                                   : null,
                             ),
@@ -1867,7 +1903,27 @@ class QuestPage extends StatelessWidget {
       );
     }
 
-    // MISSED
+    // SKIPPED (optional miss)
+    if (state == QuestState.skipped) {
+      return Row(
+        children: [
+          Icon(Icons.remove_circle_outline, color: c.muted, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            'SKIPPED',
+            style: TextStyle(
+              color: c.muted,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              letterSpacing: 1,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // MISSED (mandatory fail)
     if (state == QuestState.missed) {
       return Row(
         children: [
