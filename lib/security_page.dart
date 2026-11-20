@@ -343,7 +343,7 @@ class _SecurityPageState extends State<SecurityPage> {
             ),
             child: Row(
               children: [
-                Icon(Icons.whatsapp, color: Colors.green.shade700, size: 28),
+                Icon(icons.chat_bubble, color: Colors.green.shade700, size: 28),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(

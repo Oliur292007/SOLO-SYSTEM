@@ -258,7 +258,7 @@ class _CodeRequestDialogState extends State<CodeRequestDialog> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.whatsapp,
+                        Icon(icons.chat_bubble,
                             color: Colors.green.shade700, size: 20),
                         const SizedBox(width: 8),
                         Text(
