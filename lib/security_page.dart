@@ -7,6 +7,9 @@ import 'security_controller.dart';
 import 'supabase_service.dart';
 import 'uid_manager.dart';
 
+// Reuse the SystemColors from main.dart
+import 'main.dart' show SystemColors;
+
 class SecurityPage extends StatefulWidget {
   final SecurityController controller;
   final UidManager uidManager;
@@ -24,10 +27,13 @@ class SecurityPage extends StatefulWidget {
 }
 
 class _SecurityPageState extends State<SecurityPage> {
+  bool _initialSyncDone = false;
+
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onUpdate);
+    _autoSync();
   }
 
   @override
@@ -40,13 +46,23 @@ class _SecurityPageState extends State<SecurityPage> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _autoSync() async {
+    if (_initialSyncDone) return;
+    _initialSyncDone = true;
+    // Silent refresh on page open
+    await widget.controller.forceSync();
+  }
+
   Future<void> _copyUid() async {
     await Clipboard.setData(
       ClipboardData(text: widget.uidManager.uid ?? ''),
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('UID copied'), duration: Duration(seconds: 1)),
+      const SnackBar(
+        content: Text('UID copied'),
+        duration: Duration(seconds: 1),
+      ),
     );
   }
 
@@ -111,6 +127,8 @@ class _SecurityPageState extends State<SecurityPage> {
 
   @override
   Widget build(BuildContext context) {
+    final c = SystemColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final uid = widget.uidManager.uid ?? '—';
     final isRegistered = widget.controller.isRegistered;
     final isOnline = widget.controller.isOnline;
@@ -118,11 +136,23 @@ class _SecurityPageState extends State<SecurityPage> {
     final emergencyRemaining = widget.controller.emergencyUnlockRemaining;
 
     return Scaffold(
+      backgroundColor: c.bg,
       appBar: AppBar(
-        title: const Text('SECURITY'),
+        backgroundColor: c.panel,
+        foregroundColor: c.text,
+        elevation: 0,
+        title: Text(
+          'SECURITY',
+          style: TextStyle(
+            color: c.cyan,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 2,
+            fontSize: 16,
+          ),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.sync),
+            icon: Icon(Icons.sync, color: c.cyan),
             onPressed: _handleForceSync,
             tooltip: 'Force sync',
           ),
@@ -136,15 +166,15 @@ class _SecurityPageState extends State<SecurityPage> {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [
-                  Colors.blue.shade900,
-                  Colors.cyan.shade900,
-                ],
+                colors: isDark
+                    ? const [Color(0xFF102B50), Color(0xFF091426)]
+                    : const [Color(0xFF0077B6), Color(0xFF0096C7)],
               ),
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: c.blue.withValues(alpha: 0.5)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.cyan.withValues(alpha: 0.2),
+                  color: c.blue.withValues(alpha: 0.15),
                   blurRadius: 20,
                 ),
               ],
@@ -154,12 +184,12 @@ class _SecurityPageState extends State<SecurityPage> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.fingerprint, color: Colors.cyan, size: 20),
+                    Icon(Icons.fingerprint, color: c.cyan, size: 20),
                     const SizedBox(width: 8),
-                    const Text(
+                    Text(
                       'PLAYER UID',
                       style: TextStyle(
-                        color: Colors.cyan,
+                        color: c.cyan,
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
                         letterSpacing: 1.5,
@@ -173,10 +203,10 @@ class _SecurityPageState extends State<SecurityPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
+                      child: SelectableText(
                         uid,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: isDark ? Colors.white : Colors.white,
                           fontSize: 18,
                           fontFamily: 'monospace',
                           fontWeight: FontWeight.bold,
@@ -185,9 +215,9 @@ class _SecurityPageState extends State<SecurityPage> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.copy,
-                          color: Colors.cyan, size: 18),
+                      icon: Icon(Icons.copy, color: c.cyan, size: 18),
                       onPressed: _copyUid,
+                      tooltip: 'Copy UID',
                     ),
                   ],
                 ),
@@ -213,13 +243,15 @@ class _SecurityPageState extends State<SecurityPage> {
               padding: const EdgeInsets.all(14),
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: Colors.green.shade50,
+                color: Colors.green.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green.shade300),
+                border: Border.all(
+                  color: Colors.green.withValues(alpha: 0.5),
+                ),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.lock_open, color: Colors.green.shade700),
+                  Icon(Icons.lock_open, color: Colors.green),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -228,7 +260,7 @@ class _SecurityPageState extends State<SecurityPage> {
                         Text(
                           'EMERGENCY UNLOCK ACTIVE',
                           style: TextStyle(
-                            color: Colors.green.shade900,
+                            color: Colors.green,
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
                             letterSpacing: 0.5,
@@ -240,7 +272,7 @@ class _SecurityPageState extends State<SecurityPage> {
                           '${emergencyRemaining.inMinutes}:'
                           '${emergencyRemaining.inSeconds.remainder(60).toString().padLeft(2, '0')}',
                           style: TextStyle(
-                            color: Colors.green.shade700,
+                            color: c.muted,
                             fontSize: 11,
                           ),
                         ),
@@ -252,12 +284,13 @@ class _SecurityPageState extends State<SecurityPage> {
             ),
 
           // ============ ACTIONS ============
-          const _SectionLabel('CODE ACTIONS'),
+          _SectionLabel(text: 'CODE ACTIONS', color: c.muted),
           const SizedBox(height: 8),
 
           _ActionTile(
+            colors: c,
             icon: Icons.vpn_key,
-            iconColor: Colors.cyan.shade700,
+            iconColor: c.cyan,
             title: 'Generate Unlock / Uninstall Code',
             subtitle: isRegistered
                 ? 'Request codes from Help Center'
@@ -269,8 +302,9 @@ class _SecurityPageState extends State<SecurityPage> {
           const SizedBox(height: 8),
 
           _ActionTile(
+            colors: c,
             icon: Icons.lock_open,
-            iconColor: Colors.green.shade700,
+            iconColor: Colors.green,
             title: 'Enter Emergency Unlock Code',
             subtitle: 'Unblock restricted apps for 30 minutes',
             enabled: isRegistered,
@@ -280,8 +314,9 @@ class _SecurityPageState extends State<SecurityPage> {
           const SizedBox(height: 8),
 
           _ActionTile(
+            colors: c,
             icon: Icons.delete_forever,
-            iconColor: Colors.red.shade700,
+            iconColor: Colors.redAccent,
             title: 'Enter Uninstall Code',
             subtitle: 'Authorize app uninstall',
             enabled: isRegistered,
@@ -291,36 +326,42 @@ class _SecurityPageState extends State<SecurityPage> {
           const SizedBox(height: 24),
 
           // ============ INFO ============
-          const _SectionLabel('HOW IT WORKS'),
+          _SectionLabel(text: 'HOW IT WORKS', color: c.muted),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: c.panel,
               borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: c.divider),
             ),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _InfoStep(
+                  colors: c,
                   number: '1',
                   text: 'Tap "Generate Unlock / Uninstall Code".',
                 ),
                 _InfoStep(
+                  colors: c,
                   number: '2',
                   text: 'Send your UID to the WhatsApp number shown.',
                 ),
                 _InfoStep(
+                  colors: c,
                   number: '3',
                   text:
                       'Developer replies with EMU-XXXX-XXXX and UNI-XXXX-XXXX codes.',
                 ),
                 _InfoStep(
+                  colors: c,
                   number: '4',
                   text:
                       'Enter the code here to unlock apps or enable uninstall.',
                 ),
                 _InfoStep(
+                  colors: c,
                   number: '5',
                   text: 'Codes expire 30 minutes after generation.',
                   isLast: true,
@@ -332,35 +373,38 @@ class _SecurityPageState extends State<SecurityPage> {
           const SizedBox(height: 24),
 
           // ============ SUPPORT ============
-          const _SectionLabel('HELP CENTER'),
+          _SectionLabel(text: 'HELP CENTER', color: c.muted),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.green.shade50,
+              color: Colors.green.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.green.shade200),
+              border: Border.all(
+                color: Colors.green.withValues(alpha: 0.35),
+              ),
             ),
             child: Row(
               children: [
-                Icon(Icons.chat_bubble, color: Colors.green.shade700, size: 28),
+                Icon(Icons.chat_bubble, color: Colors.green, size: 28),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'WhatsApp Support',
                         style: TextStyle(
+                          color: c.text,
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
+                      SelectableText(
                         widget.supabaseService.whatsappNumber,
                         style: TextStyle(
-                          color: Colors.green.shade900,
+                          color: Colors.green,
                           fontSize: 13,
                           fontFamily: 'monospace',
                           fontWeight: FontWeight.w600,
@@ -372,6 +416,8 @@ class _SecurityPageState extends State<SecurityPage> {
               ],
             ),
           ),
+
+          const SizedBox(height: 20),
         ],
       ),
     );
@@ -429,23 +475,25 @@ class _SecurityPageState extends State<SecurityPage> {
 
 class _SectionLabel extends StatelessWidget {
   final String text;
-  const _SectionLabel(this.text);
+  final Color color;
+  const _SectionLabel({required this.text, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 10,
         fontWeight: FontWeight.bold,
         letterSpacing: 1.2,
-        color: Colors.grey,
+        color: color,
       ),
     );
   }
 }
 
 class _ActionTile extends StatelessWidget {
+  final SystemColors colors;
   final IconData icon;
   final Color iconColor;
   final String title;
@@ -454,6 +502,7 @@ class _ActionTile extends StatelessWidget {
   final VoidCallback onTap;
 
   const _ActionTile({
+    required this.colors,
     required this.icon,
     required this.iconColor,
     required this.title,
@@ -470,10 +519,12 @@ class _ActionTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colors.panel,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: enabled ? Colors.grey.shade300 : Colors.grey.shade200,
+            color: enabled
+                ? colors.blue.withValues(alpha: 0.35)
+                : colors.divider,
           ),
         ),
         child: Row(
@@ -481,12 +532,13 @@ class _ActionTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.12),
+                color: (enabled ? iconColor : colors.muted)
+                    .withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 icon,
-                color: enabled ? iconColor : Colors.grey,
+                color: enabled ? iconColor : colors.muted,
                 size: 20,
               ),
             ),
@@ -500,7 +552,7 @@ class _ActionTile extends StatelessWidget {
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
-                      color: enabled ? Colors.black87 : Colors.grey,
+                      color: enabled ? colors.text : colors.muted,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -508,7 +560,7 @@ class _ActionTile extends StatelessWidget {
                     subtitle,
                     style: TextStyle(
                       fontSize: 11,
-                      color: enabled ? Colors.grey.shade700 : Colors.grey,
+                      color: colors.muted,
                     ),
                   ),
                 ],
@@ -516,7 +568,7 @@ class _ActionTile extends StatelessWidget {
             ),
             Icon(
               Icons.chevron_right,
-              color: enabled ? Colors.grey : Colors.grey.shade300,
+              color: enabled ? colors.muted : colors.divider,
             ),
           ],
         ),
@@ -526,11 +578,13 @@ class _ActionTile extends StatelessWidget {
 }
 
 class _InfoStep extends StatelessWidget {
+  final SystemColors colors;
   final String number;
   final String text;
   final bool isLast;
 
   const _InfoStep({
+    required this.colors,
     required this.number,
     required this.text,
     this.isLast = false,
@@ -547,14 +601,14 @@ class _InfoStep extends StatelessWidget {
             width: 20,
             height: 20,
             decoration: BoxDecoration(
-              color: Colors.cyan.shade700,
+              color: colors.cyan,
               shape: BoxShape.circle,
             ),
             alignment: Alignment.center,
             child: Text(
               number,
               style: const TextStyle(
-                color: Colors.white,
+                color: Colors.black,
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
               ),
@@ -564,7 +618,11 @@ class _InfoStep extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 11, height: 1.4),
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.4,
+                color: colors.text,
+              ),
             ),
           ),
         ],

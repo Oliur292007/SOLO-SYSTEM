@@ -34,7 +34,12 @@ class SupabaseService {
   SupabaseClient? get client => _client;
   Map<String, String> get config => Map.unmodifiable(_config);
   List<Map<String, dynamic>> get whitelist => List.unmodifiable(_whitelist);
-  bool get isOnline => _isOnline;
+  /// Consider online if we synced within last 2 minutes.
+  bool get isOnline {
+    if (_isOnline) return true;
+    if (_lastSync == null) return false;
+    return DateTime.now().difference(_lastSync!) < const Duration(minutes: 2);
+  }
   DateTime? get lastSync => _lastSync;
 
   String get whatsappNumber =>
