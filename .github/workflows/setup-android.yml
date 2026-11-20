@@ -13,7 +13,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0' # অথবা আপনার ব্যবহৃত ভার্সন
+          flutter-version: '3.32.8' # অথবা আপনার ব্যবহৃত ভার্সন
           channel: 'stable'
 
       - name: Recreate Android folder
