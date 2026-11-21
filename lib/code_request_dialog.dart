@@ -5,7 +5,7 @@ import 'security_controller.dart';
 import 'supabase_service.dart';
 import 'uid_manager.dart';
 
-class CodeRequestDialog extends StatefulWidget {
+class CodeRequestDialog extends StatelessWidget {
   final SecurityController controller;
   final UidManager uidManager;
   final SupabaseService supabaseService;
@@ -25,7 +25,7 @@ class CodeRequestDialog extends StatefulWidget {
   }) async {
     return showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (_) => CodeRequestDialog(
         controller: controller,
         uidManager: uidManager,
@@ -34,92 +34,29 @@ class CodeRequestDialog extends StatefulWidget {
     );
   }
 
-  @override
-  State<CodeRequestDialog> createState() => _CodeRequestDialogState();
-}
-
-class _CodeRequestDialogState extends State<CodeRequestDialog> {
-  bool _requested = false;
-  bool _loading = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _autoRequest();
-  }
-
-  Future<void> _autoRequest() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    final ok = await widget.controller.requestCodes();
-
-    if (!mounted) return;
-
-    setState(() {
-      _loading = false;
-      _requested = ok;
-      _error = ok ? null : widget.controller.lastError;
-    });
-  }
-
-  Future<void> _openWhatsApp() async {
-    final number = widget.supabaseService.whatsappNumber.replaceAll('+', '');
-    final uid = widget.uidManager.uid ?? 'UNKNOWN';
-    final message = Uri.encodeComponent(
-      'Hello, I need unlock code for SOLO SYSTEM.\n\n'
-      'UID: $uid\n'
-      'Request: Emergency Unlock / Uninstall Code',
+  Future<void> _copyCommand(BuildContext context, String command) async {
+    await Clipboard.setData(ClipboardData(text: command));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Telegram command copied')),
     );
-    final url = 'https://wa.me/$number?text=$message';
-
-    try {
-      await Clipboard.setData(ClipboardData(text: url));
-    } catch (_) {}
-
-    if (!mounted) return;
-    _showSnack(
-      'Opening WhatsApp... If not opened, link copied.',
-      Colors.blue,
-    );
-  }
-
-  Future<void> _copyUid() async {
-    final uid = widget.uidManager.uid ?? '';
-    await Clipboard.setData(ClipboardData(text: uid));
-    if (!mounted) return;
-    _showSnack('UID copied to clipboard', Colors.green);
-  }
-
-  void _showSnack(String message, Color color) {
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: color,
-          duration: const Duration(seconds: 2),
-        ),
-      );
   }
 
   @override
   Widget build(BuildContext context) {
-    final whatsapp = widget.supabaseService.whatsappNumber;
-    final uid = widget.uidManager.uid ?? '—';
+    final uid = uidManager.uid ?? '';
+    final unlockCommand = 'GIVE Unlock Code, UID = $uid';
+    final uninstallCommand = 'GIVE Uninstall Code, UID = $uid';
 
     return AlertDialog(
-      title: Row(
+      title: const Row(
         children: [
-          Icon(Icons.security, color: Colors.cyan.shade700),
-          const SizedBox(width: 8),
-          const Expanded(
+          Icon(Icons.telegram, color: Color(0xFF229ED9)),
+          SizedBox(width: 8),
+          Expanded(
             child: Text(
-              'CODE REQUEST',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              'TELEGRAM CODE REQUEST',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -129,181 +66,34 @@ class _CodeRequestDialogState extends State<CodeRequestDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_loading) ...[
-              const Center(child: CircularProgressIndicator()),
-              const SizedBox(height: 16),
-              const Text(
-                'Generating request...',
-                textAlign: TextAlign.center,
-              ),
-            ] else if (_error != null) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error_outline,
-                        color: Colors.red.shade700, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Colors.red.shade700,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _autoRequest,
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('RETRY'),
-                ),
-              ),
-            ] else if (_requested) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle,
-                        color: Colors.green.shade700, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Request generated. Contact Help Center to receive your codes.',
-                        style: TextStyle(
-                          color: Colors.green.shade700,
-                          fontSize: 12,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'YOUR UID',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        uid,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.copy, size: 18),
-                    onPressed: _copyUid,
-                    tooltip: 'Copy UID',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'CONTACT HELP CENTER',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.chat_bubble,
-                            color: Colors.green.shade700, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          whatsapp,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green.shade900,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Send your UID to this WhatsApp number. The developer will reply with:',
-                      style: TextStyle(fontSize: 11, height: 1.4),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      '•  EMU-XXXX-XXXX  (emergency unlock, 30 min)\n'
-                      '•  UNI-XXXX-XXXX  (uninstall authorization)',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _openWhatsApp,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade600,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  icon: const Icon(Icons.chat, size: 18),
-                  label: const Text('OPEN WHATSAPP'),
-                ),
-              ),
-            ],
+            const Text(
+              'Open the SOLO SYSTEM Telegram Bot using the Telegram account linked to this UID. Copy and send the correct command:',
+              style: TextStyle(fontSize: 12, height: 1.45),
+            ),
+            const SizedBox(height: 14),
+            _commandTile(
+              context,
+              title: 'Emergency Unlock',
+              command: unlockCommand,
+              color: Colors.green,
+            ),
+            const SizedBox(height: 10),
+            _commandTile(
+              context,
+              title: 'Protected Uninstall',
+              command: uninstallCommand,
+              color: Colors.redAccent,
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'The bot creates a request for developer approval. After approval, the code is delivered privately to your linked Telegram account. Emergency Unlock and Uninstall codes are separate and cannot be exchanged.',
+              style: TextStyle(fontSize: 11, height: 1.45),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'GitHub Actions polling may take a few minutes. Developer approval may take additional time.',
+              style: TextStyle(fontSize: 11, height: 1.4, color: Colors.grey),
+            ),
           ],
         ),
       ),
@@ -313,6 +103,41 @@ class _CodeRequestDialogState extends State<CodeRequestDialog> {
           child: const Text('CLOSE'),
         ),
       ],
+    );
+  }
+
+  Widget _commandTile(
+    BuildContext context, {
+    required String title,
+    required String command,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+        color: color.withValues(alpha: 0.06),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 7),
+          SelectableText(
+            command,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _copyCommand(context, command),
+              icon: const Icon(Icons.copy, size: 15),
+              label: const Text('COPY COMMAND'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
