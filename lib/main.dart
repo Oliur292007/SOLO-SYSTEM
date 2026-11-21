@@ -325,6 +325,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   final Set<String> _trackedCompleted = {};
   final Set<String> _trackedMissed = {};
   int _trackedLevel = 1;
+  int _trackedTotalXp = 0;
   String _trackedRank = '';
   String _trackedTitle = '';
 
@@ -401,6 +402,15 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
       ));
     }
 
+    final xpGained = player.totalXp - _trackedTotalXp;
+    if (xpGained > 0 && newlyCompleted.isEmpty) {
+      unawaited(widget.notificationService.addNotification(
+        'MISSION REWARD RECEIVED',
+        'You received $xpGained XP from your completed special mission.',
+        type: 'reward',
+      ));
+    }
+
     if (player.level > _trackedLevel) {
       unawaited(widget.notificationService.addNotification(
         'LEVEL UP!',
@@ -416,6 +426,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
       ));
     }
     _trackedLevel = player.level;
+    _trackedTotalXp = player.totalXp;
     _trackedRank = player.rank;
     _trackedTitle = player.title;
   }
@@ -474,6 +485,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
       ..clear()
       ..addAll(widget.questSystem.missedQuestIds);
     _trackedLevel = widget.player.level;
+    _trackedTotalXp = widget.player.totalXp;
     _trackedRank = widget.player.rank;
     _trackedTitle = widget.player.title;
 
@@ -861,7 +873,6 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             studyTimer: widget.studyTimer,
             securityController: widget.securityController,
             appVersionLabel: widget.appVersionLabel,
-            notificationService: widget.notificationService,
             onNotificationsTap: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => NotificationHistoryPage(
@@ -956,7 +967,6 @@ class DashboardPage extends StatelessWidget {
   final StudyTimer studyTimer;
   final SecurityController securityController;
   final String appVersionLabel;
-  final MissionNotificationService notificationService;
   final VoidCallback onNotificationsTap;
 
   const DashboardPage({
@@ -968,7 +978,6 @@ class DashboardPage extends StatelessWidget {
     required this.studyTimer,
     required this.securityController,
     required this.appVersionLabel,
-    required this.notificationService,
     required this.onNotificationsTap,
   });
 
