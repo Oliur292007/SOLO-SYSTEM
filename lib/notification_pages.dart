@@ -256,6 +256,39 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
             enabled: _accessibilityEnabled,
             onTap: () => _open('openAccessibilitySettings'),
           ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Restricted Settings Help'),
+              subtitle: const Text('For sideloaded apps, Android may require Allow restricted settings before Accessibility can be enabled.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => showDialog<void>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: const Text('ALLOW RESTRICTED SETTINGS'),
+                  content: const Text(
+                    '1. Open Accessibility Settings once.\n\n'
+                    '2. Return to the Home Screen and long-press SOLO SYSTEM. Open App info.\n\n'
+                    '3. Tap the three-dot menu (⋮) and choose Allow restricted settings.\n\n'
+                    '4. Return to SOLO SYSTEM > Settings > Permissions, then enable Accessibility.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('CLOSE'),
+                    ),
+                    FilledButton(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        _open('openAppDetailsSettings');
+                      },
+                      child: const Text('OPEN APP INFO'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
           _permissionTile(
             icon: Icons.app_settings_alt,
             title: 'App Info & Restricted Settings',
