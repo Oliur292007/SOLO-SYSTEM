@@ -581,7 +581,7 @@ class QuestSystem extends ChangeNotifier {
 
     if (savedWeek != currentWeek) {
       // If first initialized mid-week, choose from the remaining days.
-      final firstPossibleDay = savedWeek == null ? DateTime.now().weekday : 1;
+      final firstPossibleDay = DateTime.now().weekday;
       weeklySpecialDay = firstPossibleDay +
           Random().nextInt(8 - firstPossibleDay);
       weeklySpecialMission = null;
