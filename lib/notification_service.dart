@@ -40,16 +40,55 @@ class MissionNotificationService {
     _initialized = true;
   }
 
-  Future<void> requestPermission() async {
+  Future<bool> requestPermission() async {
     if (!_initialized) await initialize();
 
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    await android?.requestNotificationsPermission();
+    if (android != null) {
+      await android.requestNotificationsPermission();
+      return await android.areNotificationsEnabled() ?? false;
+    }
 
     final ios = _plugin.resolvePlatformSpecificImplementation<
         IOSFlutterLocalNotificationsPlugin>();
-    await ios?.requestPermissions(alert: true, badge: true, sound: true);
+    return await ios?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        ) ??
+        false;
+  }
+
+  Future<bool> areNotificationsEnabled() async {
+    if (!_initialized) await initialize();
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android != null) {
+      return await android.areNotificationsEnabled() ?? false;
+    }
+    return true;
+  }
+
+  Future<void> showPermissionConfirmation() async {
+    if (!_initialized) await initialize();
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'solo_mission_reminders',
+        'Mission Reminders',
+        channelDescription:
+            'Reminders sent five minutes before scheduled missions.',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+    await _plugin.show(
+      19001,
+      'SOLO SYSTEM Notifications Enabled',
+      'Mission reminders are active. You will be notified 5 minutes before missions.',
+      details,
+    );
   }
 
   int _stableId(String value) {
