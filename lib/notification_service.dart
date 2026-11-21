@@ -308,7 +308,6 @@ class MissionNotificationService extends ChangeNotifier {
         title: 'MISSION IN 5 MINUTES',
         body: 'Your ${item.subject} schedule starts at ${item.startTime}. Get ready, Hunter.',
       );
-      newIds.add(_stableId('schedule_${item.id}').toString());
     }
     await prefs.setStringList(_storedIdsKey, newIds);
   }
