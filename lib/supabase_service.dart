@@ -12,6 +12,7 @@ class SupabaseService {
   static const String _configCacheKey = 'supabase_config_cache';
   static const String _whitelistCacheKey = 'supabase_whitelist_cache';
   static const String _lastSyncKey = 'supabase_last_sync';
+  static const String _cloudDeviceTokenKey = 'cloud_progress_device_token';
 
   // Global variable to store the last error for the UI Diagnostic
   static String? lastRegistrationError;
@@ -263,6 +264,8 @@ class SupabaseService {
             'p_uid': uidManager.uid,
             'p_code': code.trim().toUpperCase(),
             'p_type': type,
+            'p_device_token': (await SharedPreferences.getInstance())
+                .getString(_cloudDeviceTokenKey),
           })
           .timeout(const Duration(seconds: 15));
 
