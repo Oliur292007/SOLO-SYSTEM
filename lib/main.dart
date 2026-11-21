@@ -8,6 +8,7 @@ import 'timetable_system.dart';
 import 'timetable_page.dart';
 import 'rest_system.dart';
 import 'uid_manager.dart';
+import 'cloud_progress_sync.dart';
 import 'supabase_service.dart';
 import 'security_controller.dart';
 import 'security_page.dart';
@@ -35,13 +36,13 @@ Future<void> main() async {
   final supabaseService = SupabaseService(uidManager: uidManager);
   await supabaseService.initialize();
 
-  // Silent register attempt (offline-safe)
-  if (uidManager.hasUid && !uidManager.isRegistered) {
-    await supabaseService.registerUser(
-      playerName: player.playerName,
-      silent: true,
-    );
-  }
+  // Telegram Bot is the only authority allowed to register a UID.
+  // The app must never create a server account on its own.
+  final cloudProgressSync = CloudProgressSync(
+    uidManager: uidManager,
+    supabaseService: supabaseService,
+  );
+  await cloudProgressSync.initialize();
 
   // Security Controller
   final securityController = SecurityController(
@@ -63,6 +64,7 @@ Future<void> main() async {
       uidManager: uidManager,
       supabaseService: supabaseService,
       securityController: securityController,
+      cloudProgressSync: cloudProgressSync,
     ),
   );
 }
@@ -166,6 +168,7 @@ class SoloSystemApp extends StatefulWidget {
   final UidManager uidManager;
   final SupabaseService supabaseService;
   final SecurityController securityController;
+  final CloudProgressSync cloudProgressSync;
 
   const SoloSystemApp({
     super.key,
@@ -177,6 +180,7 @@ class SoloSystemApp extends StatefulWidget {
     required this.uidManager,
     required this.supabaseService,
     required this.securityController,
+    required this.cloudProgressSync,
   });
 
   @override
@@ -247,6 +251,7 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
         uidManager: widget.uidManager,
         supabaseService: widget.supabaseService,
         securityController: widget.securityController,
+        cloudProgressSync: widget.cloudProgressSync,
       ),
     );
   }
@@ -263,6 +268,7 @@ class SystemHome extends StatefulWidget {
   final UidManager uidManager;
   final SupabaseService supabaseService;
   final SecurityController securityController;
+  final CloudProgressSync cloudProgressSync;
 
   const SystemHome({
     super.key,
@@ -276,19 +282,60 @@ class SystemHome extends StatefulWidget {
     required this.uidManager,
     required this.supabaseService,
     required this.securityController,
+    required this.cloudProgressSync,
   });
 
   @override
   State<SystemHome> createState() => _SystemHomeState();
 }
 
-class _SystemHomeState extends State<SystemHome> {
+class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   int selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSystems();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.player.removeListener(_onLocalProgressChanged);
+    widget.questSystem.removeListener(_onLocalProgressChanged);
+    widget.studyTimer.removeListener(_onLocalProgressChanged);
+    widget.timetableSystem.removeListener(_onLocalProgressChanged);
+    widget.restSystem.removeListener(_onLocalProgressChanged);
+    widget.cloudProgressSync.dispose();
+    super.dispose();
+  }
+
+  void _onLocalProgressChanged() {
+    widget.cloudProgressSync.scheduleSync();
+  }
+
+  Future<void> _reloadSystemsFromLocalStorage() async {
+    await widget.player.loadPlayer();
+    await widget.restSystem.loadRest();
+    await widget.timetableSystem.loadTimetable();
+    await widget.questSystem.loadQuests();
+    await widget.studyTimer.loadTimer();
+    widget.player.attachUid(widget.uidManager.uid, widget.uidManager.isRegistered);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && widget.cloudProgressSync.isPaired) {
+      _syncCloudAndRefresh();
+    }
+  }
+
+  Future<void> _syncCloudAndRefresh() async {
+    final result = await widget.cloudProgressSync.syncNow();
+    if (result.status == CloudSyncStatus.restored && mounted) {
+      await _reloadSystemsFromLocalStorage();
+    }
   }
 
   Future<void> _loadSystems() async {
@@ -303,6 +350,19 @@ class _SystemHomeState extends State<SystemHome> {
       widget.uidManager.uid,
       widget.uidManager.isRegistered,
     );
+
+    if (widget.cloudProgressSync.isPaired) {
+      final result = await widget.cloudProgressSync.syncNow();
+      if (result.status == CloudSyncStatus.restored) {
+        await _reloadSystemsFromLocalStorage();
+      }
+    }
+
+    widget.player.addListener(_onLocalProgressChanged);
+    widget.questSystem.addListener(_onLocalProgressChanged);
+    widget.studyTimer.addListener(_onLocalProgressChanged);
+    widget.timetableSystem.addListener(_onLocalProgressChanged);
+    widget.restSystem.addListener(_onLocalProgressChanged);
   }
 
   @override
