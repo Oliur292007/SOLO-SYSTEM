@@ -1035,17 +1035,6 @@ class DashboardPage extends StatelessWidget {
         ),
         const SizedBox(height: 18),
         Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: c.panel,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: c.cyan.withValues(alpha: 0.45)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 14),
-        Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: unlockActive
