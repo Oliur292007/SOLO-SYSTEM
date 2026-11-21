@@ -17,7 +17,7 @@ class SupabaseConfig {
   // Fallback config (used when offline & never fetched from server)
   static const Map<String, String> fallbackConfig = {
     'code_expiry_minutes': '30',
-    'emergency_unlock_minutes': '30',
+    'emergency_unlock_minutes': '60',
     'youtube_warning_interval_minutes': '5',
     'youtube_hp_damage_interval_minutes': '30',
     'youtube_hp_damage_base_percent': '5',

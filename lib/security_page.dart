@@ -318,7 +318,8 @@ class _SecurityPageState extends State<SecurityPage> {
                         const SizedBox(height: 4),
                         Text(
                           'Restricted apps unlocked for '
-                          '${emergencyRemaining.inMinutes}:'
+                          '${emergencyRemaining.inHours.toString().padLeft(2, '0')}:'
+                          '${emergencyRemaining.inMinutes.remainder(60).toString().padLeft(2, '0')}:'
                           '${emergencyRemaining.inSeconds.remainder(60).toString().padLeft(2, '0')}',
                           style: TextStyle(
                             color: c.muted,
@@ -355,7 +356,7 @@ class _SecurityPageState extends State<SecurityPage> {
             icon: Icons.lock_open,
             iconColor: Colors.green,
             title: 'Enter Emergency Unlock Code',
-            subtitle: 'Unblock restricted apps for 30 minutes',
+            subtitle: 'Unblock restricted apps for 60 minutes',
             enabled: isRegistered,
             onTap: _handleEmergencyUnlock,
           ),

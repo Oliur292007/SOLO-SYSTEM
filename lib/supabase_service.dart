@@ -52,7 +52,7 @@ class SupabaseService {
       int.tryParse(_config['code_expiry_minutes'] ?? '30') ?? 30;
 
   int get emergencyUnlockMinutes =>
-      int.tryParse(_config['emergency_unlock_minutes'] ?? '30') ?? 30;
+      int.tryParse(_config['emergency_unlock_minutes'] ?? '60') ?? 60;
 
   int get youtubeWarningIntervalMinutes =>
       int.tryParse(_config['youtube_warning_interval_minutes'] ?? '5') ?? 5;

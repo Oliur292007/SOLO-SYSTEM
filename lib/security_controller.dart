@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'supabase_service.dart';
 import 'uid_manager.dart';
@@ -19,8 +22,10 @@ class SecurityController extends ChangeNotifier {
   String? _lastError;
   DateTime? _lastCodeGeneratedAt;
 
-  // Emergency unlock state
+  // Emergency unlock state (persisted so app restarts do not erase the window).
+  static const String _emergencyUnlockUntilKey = 'emergency_unlock_until_ms';
   DateTime? _emergencyUnlockUntil;
+  Timer? _unlockTicker;
 
   // Getters
   bool get isGeneratingCode => _isGeneratingCode;
@@ -59,12 +64,43 @@ class SecurityController extends ChangeNotifier {
     return expiry.difference(DateTime.now());
   }
 
-  /// Clear old emergency unlock window (called on app reload).
+  /// Restore the unlock expiry after app restart and keep its countdown live.
   Future<void> initialize() async {
-    _emergencyUnlockUntil = null;
-    _lastCodeGeneratedAt = null;
+    final prefs = await SharedPreferences.getInstance();
+    final expiryMs = prefs.getInt(_emergencyUnlockUntilKey);
+    _emergencyUnlockUntil = expiryMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(expiryMs);
     _lastError = null;
+    await refreshEmergencyUnlock();
+    if (isEmergencyUnlockActive) _startUnlockTicker();
     notifyListeners();
+  }
+
+  Future<void> refreshEmergencyUnlock() async {
+    final expiry = _emergencyUnlockUntil;
+    if (expiry != null && !DateTime.now().isBefore(expiry)) {
+      _emergencyUnlockUntil = null;
+      _unlockTicker?.cancel();
+      _unlockTicker = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_emergencyUnlockUntilKey);
+    }
+    notifyListeners();
+  }
+
+  void _startUnlockTicker() {
+    _unlockTicker?.cancel();
+    _unlockTicker = Timer.periodic(const Duration(seconds: 1), (_) async {
+      final expiry = _emergencyUnlockUntil;
+      if (expiry == null || !DateTime.now().isBefore(expiry)) {
+        await refreshEmergencyUnlock();
+        _unlockTicker?.cancel();
+        _unlockTicker = null;
+        return;
+      }
+      notifyListeners();
+    });
   }
 
   // Code requests are submitted to the linked Telegram Bot for developer approval.
@@ -86,7 +122,13 @@ class SecurityController extends ChangeNotifier {
       _emergencyUnlockUntil = DateTime.now().add(
         Duration(minutes: supabaseService.emergencyUnlockMinutes),
       );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        _emergencyUnlockUntilKey,
+        _emergencyUnlockUntil!.millisecondsSinceEpoch,
+      );
       _lastError = null;
+      _startUnlockTicker();
       notifyListeners();
     }
 
@@ -112,5 +154,11 @@ class SecurityController extends ChangeNotifier {
     // Registration and UID linking are completed by the Telegram Bot only.
     await supabaseService.forceSync();
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _unlockTicker?.cancel();
+    super.dispose();
   }
 }

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'player_system.dart';
 import 'quest_system.dart';
@@ -190,11 +193,25 @@ class SoloSystemApp extends StatefulWidget {
 
 class _SoloSystemAppState extends State<SoloSystemApp> {
   bool isDarkMode = true;
+  String appVersionLabel = '1.0.0';
 
   @override
   void initState() {
     super.initState();
     _loadTheme();
+    _loadPackageInfo();
+  }
+
+  Future<void> _loadPackageInfo() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        appVersionLabel = '${info.version}+${info.buildNumber}';
+      });
+    } catch (_) {
+      // Keep a readable fallback if platform package metadata is unavailable.
+    }
   }
 
   Future<void> _loadTheme() async {
@@ -253,6 +270,7 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
         supabaseService: widget.supabaseService,
         securityController: widget.securityController,
         cloudProgressSync: widget.cloudProgressSync,
+        appVersionLabel: appVersionLabel,
       ),
     );
   }
@@ -270,6 +288,7 @@ class SystemHome extends StatefulWidget {
   final SupabaseService supabaseService;
   final SecurityController securityController;
   final CloudProgressSync cloudProgressSync;
+  final String appVersionLabel;
 
   const SystemHome({
     super.key,
@@ -284,6 +303,7 @@ class SystemHome extends StatefulWidget {
     required this.supabaseService,
     required this.securityController,
     required this.cloudProgressSync,
+    required this.appVersionLabel,
   });
 
   @override
@@ -327,8 +347,12 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && widget.cloudProgressSync.isPaired) {
-      _syncCloudAndRefresh();
+    if (state == AppLifecycleState.resumed) {
+      unawaited(widget.securityController.refreshEmergencyUnlock());
+      if (widget.cloudProgressSync.isPaired) _syncCloudAndRefresh();
+    } else if (state == AppLifecycleState.paused &&
+        widget.cloudProgressSync.isPaired) {
+      unawaited(widget.cloudProgressSync.syncNow());
     }
   }
 
@@ -364,6 +388,9 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.studyTimer.addListener(_onLocalProgressChanged);
     widget.timetableSystem.addListener(_onLocalProgressChanged);
     widget.restSystem.addListener(_onLocalProgressChanged);
+    if (widget.cloudProgressSync.isPaired) {
+      widget.cloudProgressSync.startAutoSync();
+    }
 
     // Show the registration / cloud-recovery prompt until this device is paired.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -526,6 +553,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     tokenController.dispose();
 
     if (claimed == true && mounted) {
+      widget.cloudProgressSync.startAutoSync();
       final result = await widget.cloudProgressSync.syncNow();
       await _reloadSystemsFromLocalStorage();
       if (!mounted) return;
@@ -562,6 +590,8 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             timetableSystem: widget.timetableSystem,
             restSystem: widget.restSystem,
             studyTimer: widget.studyTimer,
+            securityController: widget.securityController,
+            appVersionLabel: widget.appVersionLabel,
           ),
           QuestPage(
             player: widget.player,
@@ -579,6 +609,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             player: widget.player,
             isDarkMode: widget.isDarkMode,
             onDarkModeChanged: widget.onDarkModeChanged,
+            appVersionLabel: widget.appVersionLabel,
           ),
         ];
 
@@ -639,6 +670,8 @@ class DashboardPage extends StatelessWidget {
   final TimetableSystem timetableSystem;
   final RestSystem restSystem;
   final StudyTimer studyTimer;
+  final SecurityController securityController;
+  final String appVersionLabel;
 
   const DashboardPage({
     super.key,
@@ -647,11 +680,18 @@ class DashboardPage extends StatelessWidget {
     required this.timetableSystem,
     required this.restSystem,
     required this.studyTimer,
+    required this.securityController,
+    required this.appVersionLabel,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = SystemColors.of(context);
+    final unlockRemaining = securityController.emergencyUnlockRemaining;
+    final unlockActive = securityController.isEmergencyUnlockActive;
+    final unlockCountdown = '${unlockRemaining.inHours.toString().padLeft(2, '0')}:'
+        '${unlockRemaining.inMinutes.remainder(60).toString().padLeft(2, '0')}:'
+        '${unlockRemaining.inSeconds.remainder(60).toString().padLeft(2, '0')}';
 
     return ListView(
       padding: const EdgeInsets.all(18),
@@ -694,6 +734,57 @@ class DashboardPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 25),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: unlockActive
+                ? Colors.green.withValues(alpha: 0.12)
+                : c.panel,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: unlockActive
+                  ? Colors.green.withValues(alpha: 0.55)
+                  : c.divider,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                unlockActive ? Icons.lock_open : Icons.lock_outline,
+                color: unlockActive ? Colors.greenAccent : c.muted,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      unlockActive
+                          ? 'EMERGENCY UNLOCK ACTIVE'
+                          : 'EMERGENCY UNLOCK INACTIVE',
+                      style: TextStyle(
+                        color: unlockActive ? Colors.greenAccent : c.text,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      unlockActive
+                          ? 'Restricted apps unlocked · $unlockCountdown remaining'
+                          : 'Restricted apps remain protected',
+                      style: TextStyle(color: c.muted, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+              if (unlockActive)
+                const Icon(Icons.verified, color: Colors.greenAccent, size: 18),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
@@ -1336,7 +1427,7 @@ class DashboardPage extends StatelessWidget {
         const SizedBox(height: 20),
         Center(
           child: Text(
-            'SYSTEM VERSION 1.0.0',
+            'SYSTEM VERSION $appVersionLabel',
             style: TextStyle(
               color: c.muted,
               fontSize: 9,
@@ -2841,12 +2932,14 @@ class SettingsPage extends StatelessWidget {
   final PlayerSystem player;
   final bool isDarkMode;
   final ValueChanged<bool> onDarkModeChanged;
+  final String appVersionLabel;
 
   const SettingsPage({
     super.key,
     required this.player,
     required this.isDarkMode,
     required this.onDarkModeChanged,
+    required this.appVersionLabel,
   });
 
   Future<void> _editPlayerName(BuildContext context) async {
@@ -2960,7 +3053,7 @@ class SettingsPage extends StatelessWidget {
               ListTile(
                 leading: Icon(Icons.info_outline, color: c.cyan),
                 title: Text('System Version', style: TextStyle(color: c.text)),
-                trailing: Text('1.0.0', style: TextStyle(color: c.muted)),
+                trailing: Text(appVersionLabel, style: TextStyle(color: c.muted)),
               ),
             ],
           ),

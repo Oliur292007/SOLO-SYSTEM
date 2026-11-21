@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -29,7 +30,9 @@ class CloudProgressSync {
   static const String _deviceTokenKey = 'cloud_progress_device_token';
   static const String _localChangedKey = 'cloud_progress_local_changed_ms';
   static const String _cloudUpdatedKey = 'cloud_progress_updated_ms';
-  static const int schemaVersion = 1;
+  static const String _lastSnapshotFingerprintKey =
+      'cloud_progress_last_snapshot_fingerprint';
+  static const int schemaVersion = 2;
 
   static const Set<String> _progressKeys = {
     // Player
@@ -78,6 +81,7 @@ class CloudProgressSync {
   bool _isApplyingRemote = false;
   bool _isSyncing = false;
   Timer? _debounce;
+  Timer? _autoSyncTimer;
   String? _cachedDeviceToken;
   String? _lastPairingError;
 
@@ -167,8 +171,8 @@ class CloudProgressSync {
     }
   }
 
-  /// Restores a newer cloud snapshot, or uploads local progress when local
-  /// progress is newer. The RPC validates the per-device token.
+  /// Reconcile local progress against the last confirmed snapshot and cloud revision.
+  /// A fingerprint detects offline edits even if the app was killed before debounce.
   Future<CloudSyncResult> syncNow() async {
     if (_isSyncing) {
       return const CloudSyncResult(
@@ -181,15 +185,22 @@ class CloudProgressSync {
     final uid = uidManager.uid;
     final token = _deviceToken;
 
-    if (client == null) {
-      return const CloudSyncResult(CloudSyncStatus.offline);
-    }
+    if (client == null) return const CloudSyncResult(CloudSyncStatus.offline);
     if (uid == null || uid.isEmpty || token == null || token.isEmpty) {
       return const CloudSyncResult(CloudSyncStatus.notPaired);
     }
 
     _isSyncing = true;
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final localSnapshot = await _captureSnapshot();
+      final localFingerprint = _snapshotFingerprint(localSnapshot);
+      final previousFingerprint =
+          prefs.getString(_lastSnapshotFingerprintKey);
+      final hasOfflineLocalChanges = previousFingerprint != null &&
+          localFingerprint != previousFingerprint;
+      final previousCloudMs = prefs.getInt(_cloudUpdatedKey) ?? 0;
+
       final response = await client.rpc(
         'restore_player_progress',
         params: {'p_uid': uid, 'p_device_token': token},
@@ -208,7 +219,7 @@ class CloudProgressSync {
       }
 
       if (status == 'no_backup') {
-        final saved = await _uploadSnapshot();
+        final saved = await _uploadSnapshot(snapshot: localSnapshot);
         return saved
             ? const CloudSyncResult(CloudSyncStatus.synced)
             : const CloudSyncResult(
@@ -234,24 +245,43 @@ class CloudProgressSync {
 
       final cloudUpdatedAt =
           DateTime.tryParse(response['updated_at']?.toString() ?? '');
-      final prefs = await SharedPreferences.getInstance();
-      final localChangedMs = prefs.getInt(_localChangedKey) ?? 0;
       final cloudMs = cloudUpdatedAt?.millisecondsSinceEpoch ?? 0;
+      final legacyLocalChangedMs = prefs.getInt(_localChangedKey) ?? 0;
 
-      if (localChangedMs == 0 || cloudMs > localChangedMs) {
+      // Preserve local edits made while offline. For older installs that do
+      // not yet have a baseline fingerprint, retain the previous timestamp
+      // migration rule for the first reconciliation.
+      final shouldUploadLocal = hasOfflineLocalChanges ||
+          (previousFingerprint == null &&
+              legacyLocalChangedMs > 0 &&
+              legacyLocalChangedMs >= cloudMs);
+
+      if (shouldUploadLocal) {
+        final saved = await _uploadSnapshot(snapshot: localSnapshot);
+        return saved
+            ? const CloudSyncResult(CloudSyncStatus.synced)
+            : const CloudSyncResult(
+                CloudSyncStatus.failed,
+                'Offline progress could not be uploaded yet.',
+              );
+      }
+
+      if (previousFingerprint == null ||
+          cloudMs > previousCloudMs) {
         await _applySnapshot(Map<String, dynamic>.from(snapshot));
+        final restoredSnapshot = await _captureSnapshot();
+        final restoredFingerprint = _snapshotFingerprint(restoredSnapshot);
+        await prefs.setString(
+          _lastSnapshotFingerprintKey,
+          restoredFingerprint,
+        );
         await prefs.setInt(_localChangedKey, cloudMs);
         await prefs.setInt(_cloudUpdatedKey, cloudMs);
         return const CloudSyncResult(CloudSyncStatus.restored);
       }
 
-      final saved = await _uploadSnapshot();
-      return saved
-          ? const CloudSyncResult(CloudSyncStatus.synced)
-          : const CloudSyncResult(
-              CloudSyncStatus.failed,
-              'Upload failed.',
-            );
+      // Local and cloud copies are already aligned.
+      return const CloudSyncResult(CloudSyncStatus.synced);
     } catch (e) {
       return CloudSyncResult(CloudSyncStatus.failed, e.toString());
     } finally {
@@ -259,7 +289,7 @@ class CloudProgressSync {
     }
   }
 
-  Future<bool> _uploadSnapshot() async {
+  Future<bool> _uploadSnapshot({Map<String, dynamic>? snapshot}) async {
     final client = supabaseService.client;
     final uid = uidManager.uid;
     final token = _deviceToken;
@@ -268,13 +298,13 @@ class CloudProgressSync {
     }
 
     try {
-      final snapshot = await _captureSnapshot();
+      final payload = snapshot ?? await _captureSnapshot();
       final response = await client.rpc(
         'save_player_progress',
         params: {
           'p_uid': uid,
           'p_device_token': token,
-          'p_snapshot': snapshot,
+          'p_snapshot': payload,
           'p_schema_version': schemaVersion,
         },
       ).timeout(const Duration(seconds: 20));
@@ -283,12 +313,15 @@ class CloudProgressSync {
 
       final updatedAt =
           DateTime.tryParse(response['updated_at']?.toString() ?? '');
-      if (updatedAt != null) {
-        final prefs = await SharedPreferences.getInstance();
-        final timestamp = updatedAt.millisecondsSinceEpoch;
-        await prefs.setInt(_cloudUpdatedKey, timestamp);
-        await prefs.setInt(_localChangedKey, timestamp);
-      }
+      final timestamp =
+          updatedAt?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_cloudUpdatedKey, timestamp);
+      await prefs.setInt(_localChangedKey, timestamp);
+      await prefs.setString(
+        _lastSnapshotFingerprintKey,
+        _snapshotFingerprint(payload),
+      );
       return true;
     } catch (_) {
       return false;
@@ -311,11 +344,56 @@ class CloudProgressSync {
       }
     }
 
+    final level = (progress['player_level'] as int? ?? 1).clamp(1, 999);
+    final title = level <= 5
+        ? 'The Awakener'
+        : level <= 10
+            ? 'Rookie Hunter'
+            : level <= 20
+                ? 'Rising Hunter'
+                : level <= 35
+                    ? 'Elite Hunter'
+                    : level <= 50
+                        ? 'Master Hunter'
+                        : level <= 75
+                            ? 'Shadow Monarch'
+                            : 'Monarch of Shadows';
+    final rank = level <= 5
+        ? 'E-Rank'
+        : level <= 10
+            ? 'D-Rank'
+            : level <= 20
+                ? 'C-Rank'
+                : level <= 35
+                    ? 'B-Rank'
+                    : level <= 50
+                        ? 'A-Rank'
+                        : level <= 75
+                            ? 'S-Rank'
+                            : 'National Level';
+
     return {
       'schema_version': schemaVersion,
       'captured_at': DateTime.now().toUtc().toIso8601String(),
+      'player_summary': {
+        'player_name': progress['player_name'] ?? 'Shadow Hunter',
+        'level': level,
+        'xp': progress['player_xp'] ?? 0,
+        'total_xp': progress['player_total_xp'] ?? 0,
+        'hp': progress['player_hp'] ?? 100,
+        'mp': progress['player_mp'] ?? 100,
+        'total_study_minutes': progress['total_study_minutes'] ?? 0,
+        'rank': rank,
+        'title': title,
+      },
       'preferences': progress,
     };
+  }
+
+  String _snapshotFingerprint(Map<String, dynamic> snapshot) {
+    final stable = Map<String, dynamic>.from(snapshot)
+      ..remove('captured_at');
+    return jsonEncode(stable);
   }
 
   Future<void> _applySnapshot(Map<String, dynamic> envelope) async {
@@ -384,7 +462,19 @@ class CloudProgressSync {
     });
   }
 
+  /// Keep progress backed up while the app remains in the foreground.
+  /// Local listeners still trigger faster debounced uploads between intervals.
+  void startAutoSync({Duration interval = const Duration(minutes: 1)}) {
+    _autoSyncTimer?.cancel();
+    if (!isPaired) return;
+    _autoSyncTimer = Timer.periodic(interval, (_) async {
+      if (!isPaired || _isSyncing) return;
+      await syncNow();
+    });
+  }
+
   void dispose() {
     _debounce?.cancel();
+    _autoSyncTimer?.cancel();
   }
 }
