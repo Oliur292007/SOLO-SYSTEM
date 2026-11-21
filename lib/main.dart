@@ -2170,6 +2170,41 @@ class QuestPage extends StatelessWidget {
                                 ),
                               ],
                             )
+                          else if (isMissionDay && mission.durationMinutes > 0)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: studyTimer.activeQuestId ==
+                                      'weekly_special_${mission.weekKey}'
+                                  ? const Text(
+                                      'Use the active timer above to finish this mission.',
+                                      textAlign: TextAlign.end,
+                                      style: TextStyle(fontSize: 10),
+                                    )
+                                  : FilledButton.icon(
+                                      onPressed: studyTimer.activeQuestId != null
+                                          ? null
+                                          : () async {
+                                              final started = await studyTimer.start(
+                                                questId: 'weekly_special_${mission.weekKey}',
+                                                durationMinutes: mission.durationMinutes,
+                                                player: player,
+                                                questSystem: questSystem,
+                                              );
+                                              if (!context.mounted) return;
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    started
+                                                        ? 'Special Mission timer started.'
+                                                        : 'Could not start timer. Check HP, MP, or active session.',
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                      icon: const Icon(Icons.timer, size: 18),
+                                      label: Text('START ${mission.durationMinutes}-MIN TIMER'),
+                                    ),
+                            )
                           else if (isMissionDay)
                             Align(
                               alignment: Alignment.centerRight,
@@ -2479,6 +2514,24 @@ class QuestPage extends StatelessWidget {
     final c = SystemColors.of(context);
     final questId = timer.activeQuestId;
     if (questId == null) return const SizedBox.shrink();
+
+    if (questId.startsWith('weekly_special_')) {
+      final mission = questSystem.weeklySpecialMission;
+      if (mission == null ||
+          questId != 'weekly_special_${mission.weekKey}') {
+        return const SizedBox.shrink();
+      }
+      final difficulty = timer.getDifficulty(mission.durationMinutes);
+      return Row(
+        children: [
+          _metaChip(c, Icons.auto_awesome, 'SPECIAL MISSION', c.cyan),
+          const SizedBox(width: 8),
+          _metaChip(c, Icons.speed, difficulty, c.cyan),
+          const SizedBox(width: 8),
+          _metaChip(c, Icons.bolt, '${timer.reservedMpAmount} MP reserved', c.cyan),
+        ],
+      );
+    }
 
     final quest = questSystem.getQuestById(questId);
     if (quest == null) return const SizedBox.shrink();
