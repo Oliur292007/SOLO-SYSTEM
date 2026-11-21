@@ -600,6 +600,12 @@ class QuestSystem extends ChangeNotifier {
           weeklySpecialMission = WeeklySpecialMission.fromJson(
             Map<String, dynamic>.from(jsonDecode(raw) as Map),
           );
+          // Older releases could generate a physical-training mission.
+          // Replace it so every special mission remains study-focused.
+          if (weeklySpecialMission!.category == 'STRENGTH') {
+            weeklySpecialMission = null;
+            await prefs.remove(_specialMissionKey);
+          }
         } catch (_) {
           weeklySpecialMission = null;
           await prefs.remove(_specialMissionKey);
@@ -615,7 +621,8 @@ class QuestSystem extends ChangeNotifier {
 
   Future<void> _generateWeeklySpecialMission(String weekKey) async {
     final player = restSystem.player;
-    final todaySchedules = timetableSystem.getSchedulesForDay(DateTime.now().weekday);
+    final todaySchedules =
+        timetableSystem.getSchedulesForDay(DateTime.now().weekday);
     final missedCount = missedQuestIds.length;
     final completedCount = completedQuestIds.length;
 
@@ -624,29 +631,50 @@ class QuestSystem extends ChangeNotifier {
     String category;
 
     if (missedCount >= 2) {
-      title = 'Discipline Rebuild';
-      description = 'Complete one planned task today without postponing it. '
-          'Stay focused and rebuild your consistency.';
+      title = 'Study Discipline Recovery';
+      description = 'Complete a 30-minute focused revision session. '
+          'Review one topic you recently studied and write down five key points.';
       category = 'DISCIPLINE';
     } else if (todaySchedules.isNotEmpty) {
-      final subject = todaySchedules.first.subject;
-      title = 'Mastery Challenge';
-      description = 'Complete an extra focused study session for $subject. '
-          'Go beyond your regular timetable.';
-      category = 'KNOWLEDGE';
-    } else if (player.strength <= player.intellect) {
-      title = 'Shadow Training';
-      description = 'Complete a 20-minute physical activity session and '
-          'push your limits.';
-      category = 'STRENGTH';
+      final subjects = todaySchedules.map((schedule) => schedule.subject).toSet();
+      final subject = subjects.elementAt(Random().nextInt(subjects.length));
+      final challenges = <({String title, String description, String category})>[
+        (
+          title: 'Subject Mastery Trial',
+          description: 'Complete an extra 30-minute focused study session for '
+              '$subject, then summarize the lesson in your own words.',
+          category: 'STUDY',
+        ),
+        (
+          title: 'Revision Challenge',
+          description: 'Revise an important topic from $subject and solve '
+              'at least 10 related practice questions.',
+          category: 'REVISION',
+        ),
+        (
+          title: 'Knowledge Notes Challenge',
+          description: 'Study a topic from $subject and prepare a clear '
+              'one-page set of revision notes.',
+          category: 'NOTES',
+        ),
+      ];
+      final selected = challenges[Random().nextInt(challenges.length)];
+      title = selected.title;
+      description = selected.description;
+      category = selected.category;
+    } else if (completedCount >= 3 || player.intellect >= player.strength) {
+      title = 'Knowledge Expansion Trial';
+      description = 'Choose an academic topic, study it for 30 focused minutes, '
+          'and write down five things you learned.';
+      category = 'STUDY';
     } else {
-      title = 'Knowledge Trial';
-      description = 'Spend 25 minutes learning something useful and record '
-          'what you learned.';
-      category = 'INTELLECT';
+      title = 'Practice Mastery Challenge';
+      description = 'Choose a subject you want to improve, complete 20 '
+          'practice questions, and review every incorrect answer.';
+      category = 'PRACTICE';
     }
 
-    description = '${player.rank} challenge: $description';
+    description = '${player.rank} study challenge: $description';
 
     // Reward scales with level and recent quest activity.
     final activityBonus = min(completedCount * 5, 50);
