@@ -5,6 +5,19 @@
         android:label="solo_system"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <service
+            android:name=".StudyRestrictionAccessibilityService"
+            android:label="SOLO SYSTEM Study Protection"
+            android:description="@string/study_protection_service_description"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/study_restriction_accessibility" />
+        </service>
         <activity
             android:name=".MainActivity"
             android:exported="true"
