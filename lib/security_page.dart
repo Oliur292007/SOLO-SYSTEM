@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+const MethodChannel _studyRestrictionChannel =
+    MethodChannel('solo_system/app_restriction');
+
 import 'code_entry_dialog.dart';
 import 'code_request_dialog.dart';
 import 'security_controller.dart';
@@ -72,6 +75,19 @@ class _SecurityPageState extends State<SecurityPage> {
       uidManager: widget.uidManager,
       supabaseService: widget.supabaseService,
     );
+  }
+
+  Future<void> _openStudyProtectionSettings() async {
+    try {
+      await _studyRestrictionChannel.invokeMethod<void>(
+        'openAccessibilitySettings',
+      );
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open Accessibility Settings: ${error.message}')),
+      );
+    }
   }
 
   Future<void> _handleEmergencyUnlock() async {
@@ -347,6 +363,18 @@ class _SecurityPageState extends State<SecurityPage> {
                 : 'Requires registration',
             enabled: isRegistered && !widget.controller.isGeneratingCode,
             onTap: _handleRequestCodes,
+          ),
+
+          const SizedBox(height: 8),
+
+          _ActionTile(
+            colors: c,
+            icon: Icons.shield,
+            iconColor: Colors.cyanAccent,
+            title: 'Enable Study App Protection',
+            subtitle: 'Turn on SOLO SYSTEM Study Protection in Android Accessibility Settings',
+            enabled: true,
+            onTap: _openStudyProtectionSettings,
           ),
 
           const SizedBox(height: 8),
