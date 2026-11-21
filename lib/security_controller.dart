@@ -67,43 +67,8 @@ class SecurityController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ============================================================
-  // GENERATE CODES
-  // ============================================================
-
-  Future<bool> requestCodes() async {
-    if (_isGeneratingCode) return false;
-    if (!isRegistered) {
-      _lastError = 'Not registered yet. Connect to internet.';
-      notifyListeners();
-      return false;
-    }
-
-    _isGeneratingCode = true;
-    _lastError = null;
-    notifyListeners();
-
-    try {
-      final result = await supabaseService.generateCodes();
-      if (result.success) {
-        _lastCodeGeneratedAt = DateTime.now();
-        _lastError = null;
-        _isGeneratingCode = false;
-        notifyListeners();
-        return true;
-      } else {
-        _lastError = result.error ?? 'Failed to generate codes';
-        _isGeneratingCode = false;
-        notifyListeners();
-        return false;
-      }
-    } catch (e) {
-      _lastError = 'Network error. Try again.';
-      _isGeneratingCode = false;
-      notifyListeners();
-      return false;
-    }
-  }
+  // Code requests are submitted to the linked Telegram Bot for developer approval.
+  // The app must never generate security codes directly.
 
   // ============================================================
   // VALIDATE EMERGENCY UNLOCK
