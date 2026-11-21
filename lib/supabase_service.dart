@@ -160,13 +160,6 @@ class SupabaseService {
       _lastSync = DateTime.now();
       await _saveCache();
 
-      if (uidManager.hasUid && !uidManager.isRegistered) {
-        await registerUser(
-          playerName: 'Shadow Hunter',
-          silent: true,
-        );
-      }
-
       _retryTimer?.cancel();
       _retryTimer = null;
     } catch (e) {
@@ -193,53 +186,6 @@ class SupabaseService {
   Future<bool> forceSync() async {
     await _tryNetworkSync();
     return _isOnline;
-  }
-
-  // ============================================================
-  // REGISTER USER
-  // ============================================================
-
-  Future<bool> registerUser({
-    required String playerName,
-    bool silent = false,
-  }) async {
-    if (!uidManager.hasUid) {
-      lastRegistrationError = 'No UID generated locally';
-      return false;
-    }
-
-    if (uidManager.isRegistered) return true;
-
-    if (_client == null) {
-      lastRegistrationError = 'Supabase Client is NULL. Check URL/Key.';
-      return false;
-    }
-
-    try {
-      final result = await _client!
-          .rpc('register_user', params: {
-            'p_uid': uidManager.uid,
-            'p_device_id': uidManager.deviceId,
-            'p_player_name': playerName,
-          })
-          .timeout(const Duration(seconds: 15));
-
-      if (result is Map && result['success'] == true) {
-        await uidManager.markRegistered();
-        _isOnline = true;
-        lastRegistrationError = null; // Clear error on success
-        return true;
-      }
-
-      lastRegistrationError = 'Server returned: $result';
-      return false;
-    } catch (e) {
-      lastRegistrationError = 'Exception: ${e.toString()}';
-      await uidManager.incrementRegistrationAttempts();
-      _isOnline = false;
-      _scheduleRetry();
-      return false;
-    }
   }
 
   // ============================================================
