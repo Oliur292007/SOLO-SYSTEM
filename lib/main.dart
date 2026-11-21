@@ -207,7 +207,7 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
       final info = await PackageInfo.fromPlatform();
       if (!mounted) return;
       setState(() {
-        appVersionLabel = '${info.version}+${info.buildNumber}';
+        appVersionLabel = info.version;
       });
     } catch (_) {
       // Keep a readable fallback if platform package metadata is unavailable.
