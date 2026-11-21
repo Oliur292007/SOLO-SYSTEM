@@ -59,8 +59,18 @@ enum QuestState {
   locked,
 }
 
+
+int _extractDurationMinutes(String description) {
+  final match = RegExp(
+    r'(\\d+)\\s*(?:-\\s*)?(?:focused\\s+)?minutes?',
+    caseSensitive: false,
+  ).firstMatch(description);
+  return match == null ? 0 : int.tryParse(match.group(1)!) ?? 0;
+}
+
 class WeeklySpecialMission {
   final String weekKey;
+  final int durationMinutes;
   final int weekday;
   final String title;
   final String description;
@@ -70,6 +80,7 @@ class WeeklySpecialMission {
 
   const WeeklySpecialMission({
     required this.weekKey,
+    this.durationMinutes = 0,
     required this.weekday,
     required this.title,
     required this.description,
@@ -90,6 +101,7 @@ class WeeklySpecialMission {
 
   Map<String, dynamic> toJson() => {
         'weekKey': weekKey,
+        'durationMinutes': durationMinutes,
         'weekday': weekday,
         'title': title,
         'description': description,
@@ -101,6 +113,8 @@ class WeeklySpecialMission {
   factory WeeklySpecialMission.fromJson(Map<String, dynamic> json) =>
       WeeklySpecialMission(
         weekKey: json['weekKey'] as String,
+        durationMinutes: (json['durationMinutes'] as num?)?.toInt() ??
+            _extractDurationMinutes(json['description'] as String? ?? ''),
         weekday: json['weekday'] as int,
         title: json['title'] as String,
         description: json['description'] as String,
@@ -687,6 +701,7 @@ class QuestSystem extends ChangeNotifier {
       description: description,
       category: category,
       xpReward: reward,
+      durationMinutes: _extractDurationMinutes(description),
     );
 
     final prefs = await SharedPreferences.getInstance();
