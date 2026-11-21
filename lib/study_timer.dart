@@ -160,6 +160,13 @@ class StudyTimer extends ChangeNotifier {
     if (durationMinutes <= 0) return false;
     if (player.isCriticalHp) return false;
 
+    // Enforce rest/mission exclusivity at the timer layer as well as in the UI.
+    if (questSystem != null &&
+        (questSystem.restSystem.isShortRestActive ||
+            questSystem.restSystem.isLongRestActive)) {
+      return false;
+    }
+
     final mpCost = calculateMpCost(durationMinutes);
     if (availableMp(player) < mpCost) return false;
 
