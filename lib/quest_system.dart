@@ -991,6 +991,7 @@ class QuestSystem extends ChangeNotifier {
 
     _loadedDateKey = todayKey;
     await _ensureWeeklySpecialMission();
+    await _ensureDailySystemMessage();
 
     await _saveCompleted();
     await _saveMissed();
