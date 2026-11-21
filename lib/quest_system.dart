@@ -754,7 +754,6 @@ class QuestSystem extends ChangeNotifier {
         final deadline =
             DateTime.fromMillisecondsSinceEpoch(item['deadline'] as int);
         final isOptional = item['optional'] as bool? ?? false;
-        final timerStarted = (item['timerStarted'] as bool?) ?? false;
 
         if (completedQuestIds.contains(id)) continue;
         if (isOptional) continue;
