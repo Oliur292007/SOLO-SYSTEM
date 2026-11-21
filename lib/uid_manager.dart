@@ -63,6 +63,56 @@ class UidManager {
     return uuid.v4();
   }
 
+
+  /// Replace a fresh-install UID with the UID verified through Telegram.
+  Future<void> restoreRegisteredUid(String recoveredUid) async {
+    final normalized = recoveredUid.trim().toUpperCase();
+    if (!RegExp(r'^SOLO-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}
+    _isRegistered = true;
+    _registrationAttempts = 0;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_registeredKey, true);
+    await prefs.setInt(_registrationAttemptsKey, 0);
+  }
+
+  Future<void> incrementRegistrationAttempts() async {
+    _registrationAttempts++;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_registrationAttemptsKey, _registrationAttempts);
+  }
+
+  /// Dev-only: clear UID (for testing). Do not expose in UI.
+  Future<void> clearAll() async {
+    _uid = null;
+    _deviceId = null;
+    _isRegistered = false;
+    _registrationAttempts = 0;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_uidKey);
+    await prefs.remove(_deviceIdKey);
+    await prefs.remove(_registeredKey);
+    await prefs.remove(_registrationAttemptsKey);
+  }
+})
+        .hasMatch(normalized)) {
+      throw ArgumentError('Invalid SOLO UID format.');
+    }
+
+    _uid = normalized;
+    _deviceId ??= _generateDeviceId();
+    _isRegistered = true;
+    _registrationAttempts = 0;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_uidKey, normalized);
+    await prefs.setString(_deviceIdKey, _deviceId!);
+    await prefs.setBool(_registeredKey, true);
+    await prefs.setInt(_registrationAttemptsKey, 0);
+  }
+
   Future<void> markRegistered() async {
     _isRegistered = true;
     _registrationAttempts = 0;
