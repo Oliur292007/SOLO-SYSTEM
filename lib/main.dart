@@ -398,20 +398,17 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.studyTimer.addListener(_onLocalProgressChanged);
     widget.timetableSystem.addListener(_onLocalProgressChanged);
     widget.timetableSystem.addListener(_syncMissionNotifications);
-    await _syncMissionNotifications();
     widget.restSystem.addListener(_onLocalProgressChanged);
     if (widget.cloudProgressSync.isPaired) {
       widget.cloudProgressSync.startAutoSync();
     }
 
-    // Show the registration / cloud-recovery prompt until this device is paired.
+    // Never let notification scheduling block first-launch onboarding.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      await _showFirstLaunchSetup();
-      if (mounted && !widget.cloudProgressSync.isPaired) {
-        await _showRegistrationPrompt();
-      }
+      await _runFirstLaunchOnboarding();
     });
+    unawaited(_syncMissionNotificationsSafely());
   }
 
   static const MethodChannel _appRestrictionChannel =
@@ -423,21 +420,41 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _syncMissionNotificationsSafely() async {
+    try {
+      await _syncMissionNotifications();
+    } catch (error, stackTrace) {
+      debugPrint('MISSION NOTIFICATION SCHEDULING ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _runFirstLaunchOnboarding() async {
+    // Registration / cloud retrieval is independent of permission setup.
+    if (!widget.cloudProgressSync.isPaired) {
+      await _showRegistrationPrompt();
+    }
+    if (mounted) await _showFirstLaunchSetup();
+  }
+
   Future<void> _showFirstLaunchSetup() async {
+    const onboardingVersion = 2;
+    const onboardingVersionKey = 'first_launch_onboarding_version';
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('first_launch_permissions_prompted') ?? false) return;
+    if ((prefs.getInt(onboardingVersionKey) ?? 0) >= onboardingVersion) {
+      return;
+    }
     if (!mounted) return;
 
     final continueSetup = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('SET UP SOLO SYSTEM PROTECTION'),
+        title: const Text('SET UP SOLO SYSTEM PERMISSIONS'),
         content: const Text(
-          'SOLO SYSTEM can protect your focus during active missions. '
-          'Android requires you to enable its Accessibility service manually '
-          'in Settings. You will also be asked whether SOLO SYSTEM may send '
-          'mission reminders five minutes before scheduled start times.',
+          'Enable mission notifications and Study App Protection. '
+          'Notifications can be allowed in the next Android prompt. '
+          'Study App Protection needs one manual step in Android Accessibility Settings.',
         ),
         actions: [
           TextButton(
@@ -452,28 +469,81 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
       ),
     );
 
-    await prefs.setBool('first_launch_permissions_prompted', true);
-    if (continueSetup != true || !mounted) return;
-
-    await widget.notificationService.requestPermission();
-    if (!mounted) return;
+    if (continueSetup != true || !mounted) {
+      await prefs.setInt(onboardingVersionKey, onboardingVersion);
+      return;
+    }
 
     try {
-      final alreadyEnabled =
+      await widget.notificationService.requestPermission();
+    } catch (error) {
+      debugPrint('NOTIFICATION PERMISSION ERROR: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Notification permission request failed: $error')),
+        );
+      }
+    }
+    if (!mounted) return;
+
+    bool accessibilityEnabled = false;
+    try {
+      accessibilityEnabled =
           await _appRestrictionChannel.invokeMethod<bool>(
                 'isAccessibilityEnabled',
               ) ??
               false;
-      if (alreadyEnabled) return;
-      await _appRestrictionChannel.invokeMethod<void>(
-        'openAccessibilitySettings',
-      );
-    } on PlatformException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open Accessibility Settings: ${error.message}')),
-      );
+    } catch (error) {
+      debugPrint('ACCESSIBILITY STATUS ERROR: $error');
     }
+
+    if (!accessibilityEnabled && mounted) {
+      final openSettings = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('ENABLE STUDY APP PROTECTION'),
+          content: const Text(
+            'Follow these steps in Android Settings:\n\n'
+            '1. Find and tap SOLO SYSTEM in the Accessibility app list.\n'
+            '2. Turn on the SOLO SYSTEM accessibility service.\n'
+            '3. Read the Android warning and allow it only if you agree.\n\n'
+            'This permission lets SOLO SYSTEM return you to the Home Screen '
+            'when you try to open other apps during an active mission timer. '
+            'You can change this anytime from Security settings.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('DO THIS LATER'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('OPEN SETTINGS'),
+            ),
+          ],
+        ),
+      );
+
+      if (openSettings == true && mounted) {
+        try {
+          await _appRestrictionChannel.invokeMethod<void>(
+            'openAccessibilitySettings',
+          );
+        } on PlatformException catch (error) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Could not open Accessibility Settings: ${error.message}',
+              ),
+            ),
+          );
+        }
+      }
+    }
+
+    await prefs.setInt(onboardingVersionKey, onboardingVersion);
   }
 
   Future<void> _showRegistrationPrompt() async {
