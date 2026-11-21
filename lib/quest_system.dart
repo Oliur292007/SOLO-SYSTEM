@@ -91,6 +91,7 @@ class WeeklySpecialMission {
 
   WeeklySpecialMission copyWith({bool? isCompleted}) => WeeklySpecialMission(
         weekKey: weekKey,
+        durationMinutes: durationMinutes,
         weekday: weekday,
         title: title,
         description: description,
