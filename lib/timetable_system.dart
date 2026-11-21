@@ -411,24 +411,68 @@ class TimetableSystem extends ChangeNotifier {
       return 'Optional schedules are only allowed on Friday.';
     }
 
-    // Option A: strict overlap prevention.
-    // Block if another schedule exists on the same day at the same startTime.
-    final conflict = _schedules.any((item) {
-      if (item.id == excludeId) return false;
-      if (item.dayOfWeek != dayOfWeek) return false;
-      if (item.startTime != startTime) return false;
-      return true;
-    });
+    // Prevent real time overlaps, including schedules that cross midnight
+    // or overlap a schedule on the following/previous weekday.
+    final newStart = (dayOfWeek - 1) * 24 * 60 + _minutesFromTime(startTime);
+    final newEnd = newStart + durationMinutes;
+    const weekMinutes = 7 * 24 * 60;
 
-    if (conflict) {
-      return 'Another schedule already starts at this exact time on this day.';
+    for (final item in _schedules) {
+      if (item.id == excludeId) continue;
+
+      final existingStart =
+          (item.dayOfWeek - 1) * 24 * 60 + _minutesFromTime(item.startTime);
+      final existingEnd = existingStart + item.durationMinutes;
+
+      // Compare adjacent weekly copies to handle Sunday/Monday boundaries.
+      for (final offset in [-weekMinutes, 0, weekMinutes]) {
+        final shiftedStart = existingStart + offset;
+        final shiftedEnd = existingEnd + offset;
+        if (newStart < shiftedEnd && shiftedStart < newEnd) {
+          return 'This schedule overlaps another schedule on the selected day/time.';
+        }
+      }
     }
 
     return null;
   }
 
+  int _minutesFromTime(String value) {
+    final parts = value.split(':');
+    return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+  }
+
   bool _isValidTime(String value) {
-    return RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$').hasMatch(value);
+    return RegExp(r'^([01]\d|2[0-3]):([0-5]\d)
+
+  bool _isValidScheduleData(StudyScheduleItem item) {
+    if (item.id.isEmpty) return false;
+    if (item.dayOfWeek < 1 || item.dayOfWeek > 7) return false;
+    if (item.subject.trim().isEmpty) return false;
+    if (item.subject.length > _maxSubjectLength) return false;
+    if (item.durationMinutes <= 0) return false;
+    if (!_isValidTime(item.startTime)) return false;
+    if (item.isOptional && item.dayOfWeek != 5) return false;
+
+    // Note: do NOT re-run overlap detection on load —
+    // historical data might contain overlaps from before this rule.
+    return true;
+  }
+
+  // ============================================================
+  // PERSISTENCE
+  // ============================================================
+
+  Future<bool> _saveTimetable() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = _schedules.map((item) => item.toJson()).toList();
+      return await prefs.setString(_storageKey, jsonEncode(data));
+    } catch (_) {
+      return false;
+    }
+  }
+}).hasMatch(value);
   }
 
   bool _isValidScheduleData(StudyScheduleItem item) {
