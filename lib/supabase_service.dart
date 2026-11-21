@@ -47,8 +47,6 @@ class SupabaseService {
 
   DateTime? get lastSync => _lastSync;
 
-  String get whatsappNumber =>
-      _config['whatsapp_number'] ?? SupabaseConfig.fallbackConfig['whatsapp_number']!;
 
   int get codeExpiryMinutes =>
       int.tryParse(_config['code_expiry_minutes'] ?? '30') ?? 30;
@@ -187,59 +185,6 @@ class SupabaseService {
   Future<bool> forceSync() async {
     await _tryNetworkSync();
     return _isOnline;
-  }
-
-  // ============================================================
-  // GENERATE CODES
-  // ============================================================
-
-  Future<({bool success, String? error, DateTime? expiresAt})> generateCodes() async {
-    if (!uidManager.hasUid) {
-      return (success: false, error: 'UID not initialized', expiresAt: null);
-    }
-
-    if (!uidManager.isRegistered) {
-      return (
-        success: false,
-        error: 'Not registered. Connect to internet first.',
-        expiresAt: null,
-      );
-    }
-
-    if (_client == null) {
-      return (success: false, error: 'No internet connection', expiresAt: null);
-    }
-
-    try {
-      final result = await _client!
-          .rpc('generate_codes', params: {'p_uid': uidManager.uid})
-          .timeout(const Duration(seconds: 15));
-
-      if (result is! Map) {
-        return (success: false, error: 'Invalid response format', expiresAt: null);
-      }
-
-      if (result['success'] == true) {
-        final expiresAtStr = result['expires_at'] as String?;
-        final expiresAt =
-            expiresAtStr != null ? DateTime.parse(expiresAtStr) : null;
-        _isOnline = true;
-        return (success: true, error: null, expiresAt: expiresAt);
-      }
-
-      return (
-        success: false,
-        error: result['error']?.toString() ?? 'Failed to generate codes',
-        expiresAt: null,
-      );
-    } catch (e) {
-      _isOnline = false;
-      return (
-        success: false,
-        error: 'Exception: $e',
-        expiresAt: null,
-      );
-    }
   }
 
   // ============================================================
