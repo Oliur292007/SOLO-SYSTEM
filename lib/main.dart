@@ -500,10 +500,10 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
                       } else {
                         setDialogState(() => isClaiming = false);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
+                          SnackBar(
                             content: Text(
-                              'Pairing failed. Check the UID/token or send '
-                              'PAIR again in Telegram for a fresh token.',
+                              'Pairing failed: ${widget.cloudProgressSync.lastPairingError ?? 'Unknown error'}. '
+                              'Please request a fresh token if expired.',
                             ),
                           ),
                         );
