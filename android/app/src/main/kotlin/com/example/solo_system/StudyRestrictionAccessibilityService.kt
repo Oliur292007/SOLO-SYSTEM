@@ -54,12 +54,12 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             p.contains("permissioncontroller") ||
             p.contains("packageinstaller") ||
             p.contains("dialer") ||
+            p == "com.android.phone" ||
             p.contains("incallui") ||
             p.contains("telecom") ||
             p.contains("emergency") ||
             p.contains("deskclock") ||
-            p.contains("clock") ||
-            p == "com.android.settings"
+            p.contains("clock")
     }
 
     override fun onInterrupt() {
