@@ -223,15 +223,31 @@ class MissionNotificationService extends ChangeNotifier {
     return hash == 0 ? 1 : hash;
   }
 
-  tz.TZDateTime _nextWeeklyReminder(int weekday, int hour, int minute) {
+  tz.TZDateTime _nextWeeklyStart(int weekday, int hour, int minute) {
     final now = tz.TZDateTime.now(tz.local);
     var candidate = tz.TZDateTime(
       tz.local, now.year, now.month, now.day, hour, minute,
-    ).subtract(const Duration(minutes: 5));
+    );
     while (candidate.weekday != weekday || !candidate.isAfter(now)) {
       candidate = candidate.add(const Duration(days: 1));
     }
     return candidate;
+  }
+
+  Future<bool> canScheduleExactNotifications() async {
+    if (!_initialized) await initialize();
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    return await android?.canScheduleExactNotifications() ?? true;
+  }
+
+  Future<bool> requestExactAlarmPermission() async {
+    if (!_initialized) await initialize();
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return true;
+    await android.requestExactAlarmsPermission();
+    return await android.canScheduleExactNotifications() ?? false;
   }
 
   Future<void> syncMissionReminders(
@@ -258,6 +274,11 @@ class MissionNotificationService extends ChangeNotifier {
     }
 
     final newIds = <String>[];
+    final exactAllowed = await canScheduleExactNotifications();
+    final scheduleMode = exactAllowed
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+
     Future<void> scheduleWeekly({
       required int id,
       required int weekday,
@@ -266,15 +287,55 @@ class MissionNotificationService extends ChangeNotifier {
       required String title,
       required String body,
     }) async {
-      final reminder = _nextWeeklyReminder(weekday, hour, minute);
+      final now = tz.TZDateTime.now(tz.local);
+      final nextStart = _nextWeeklyStart(weekday, hour, minute);
+      final reminder = nextStart.subtract(const Duration(minutes: 5));
+
+      if (reminder.isAfter(now)) {
+        await _plugin.zonedSchedule(
+          id, title, body, reminder, details,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          androidScheduleMode: scheduleMode,
+          matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        );
+        newIds.add(id.toString());
+        return;
+      }
+
+      // If a schedule is created inside its final five-minute window,
+      // notify once immediately instead of silently postponing it for a week.
+      final immediateId = id;
       await _plugin.zonedSchedule(
-        id, title, body, reminder, details,
+        immediateId,
+        title,
+        body,
+        now.add(const Duration(seconds: 2)),
+        details,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: scheduleMode,
+      );
+      newIds.add(immediateId.toString());
+
+      // Keep the normal weekly reminder for the next occurrence.
+      final repeatId = (id ^ 0x40000000) & 0x7fffffff;
+      final nextWeeklyReminder =
+          nextStart.add(const Duration(days: 7)).subtract(
+                const Duration(minutes: 5),
+              );
+      await _plugin.zonedSchedule(
+        repeatId,
+        title,
+        body,
+        nextWeeklyReminder,
+        details,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        androidScheduleMode: scheduleMode,
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
       );
-      newIds.add(id.toString());
+      newIds.add(repeatId.toString());
     }
 
     for (var day = DateTime.monday; day <= DateTime.sunday; day++) {
