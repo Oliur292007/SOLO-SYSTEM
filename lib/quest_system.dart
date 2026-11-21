@@ -336,6 +336,13 @@ class QuestSystem extends ChangeNotifier {
       );
     }
 
+    if (restSystem.isShortRestActive || restSystem.isLongRestActive) {
+      return (
+        allowed: false,
+        reason: 'Rest is active. Finish resting before starting a mission.',
+      );
+    }
+
     final now = DateTime.now();
 
     // Flexible Schedule Timer: scheduled study missions may begin early.
