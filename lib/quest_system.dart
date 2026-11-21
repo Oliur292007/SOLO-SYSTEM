@@ -262,7 +262,11 @@ class QuestSystem extends ChangeNotifier {
 
     final now = DateTime.now();
 
-    if (quest.availableFrom != null && now.isBefore(quest.availableFrom!)) {
+    // Flexible Schedule Timer: scheduled study missions may begin early.
+    // Fixed missions (Wakeup/Sleeping) keep their configured availability windows.
+    if (scheduleIdFromQuestId(questId) == null &&
+        quest.availableFrom != null &&
+        now.isBefore(quest.availableFrom!)) {
       return (allowed: false, reason: 'Mission not available yet.');
     }
 
@@ -291,7 +295,9 @@ class QuestSystem extends ChangeNotifier {
       return quest.isOptional ? QuestState.skipped : QuestState.missed;
     }
 
-    if (quest.availableFrom != null && now.isBefore(quest.availableFrom!)) {
+    if (quest.availableFrom != null &&
+        now.isBefore(quest.availableFrom!) &&
+        scheduleIdFromQuestId(questId) == null) {
       return QuestState.upcoming;
     }
 
@@ -533,7 +539,10 @@ class QuestSystem extends ChangeNotifier {
     if (isSkipped(questId)) return null;
     if (player.isCriticalHp) return null;
 
-    if (quest.availableFrom != null &&
+    // A schedule timer can be started and completed before its timetable slot.
+    // Fixed daily missions remain restricted to their configured windows.
+    if (scheduleIdFromQuestId(questId) == null &&
+        quest.availableFrom != null &&
         DateTime.now().isBefore(quest.availableFrom!)) {
       return null;
     }
