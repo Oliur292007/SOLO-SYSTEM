@@ -35,6 +35,21 @@ class MainActivity : FlutterActivity() {
                         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         result.success(true)
                     }
+                    "openAppNotificationSettings" -> {
+                        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    }
+                    "openAppDetailsSettings" -> {
+                        val intent = Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            android.net.Uri.parse("package:$packageName")
+                        )
+                        startActivity(intent)
+                        result.success(true)
+                    }
                     "isAccessibilityEnabled" -> {
                         val manager = getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
                         val enabled = manager.getEnabledAccessibilityServiceList(
