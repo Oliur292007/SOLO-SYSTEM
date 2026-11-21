@@ -79,6 +79,9 @@ class CloudProgressSync {
   bool _isSyncing = false;
   Timer? _debounce;
   String? _cachedDeviceToken;
+  String? _lastPairingError;
+
+  String? get lastPairingError => _lastPairingError;
 
   CloudProgressSync({
     required this.uidManager,
@@ -102,15 +105,27 @@ class CloudProgressSync {
     String pairingToken, {
     String? uidOverride,
   }) async {
+    _lastPairingError = null;
     final client = supabaseService.client;
     final uid = (uidOverride ?? uidManager.uid)?.trim().toUpperCase();
 
-    if (client == null || uid == null || uid.isEmpty) return false;
-    if (!RegExp(r'^SOLO-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$')
-        .hasMatch(uid)) {
+    if (client == null) {
+      _lastPairingError = 'Supabase client is not initialized.';
       return false;
     }
-    if (pairingToken.trim().isEmpty) return false;
+    if (uid == null || uid.isEmpty) {
+      _lastPairingError = 'UID is missing.';
+      return false;
+    }
+    if (!RegExp(r'^SOLO-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$')
+        .hasMatch(uid)) {
+      _lastPairingError = 'Invalid UID format. Use SOLO-XXXX-XXXX-XXXX.';
+      return false;
+    }
+    if (pairingToken.trim().isEmpty) {
+      _lastPairingError = 'Pairing token is empty.';
+      return false;
+    }
 
     try {
       final response = await client.rpc(
@@ -121,12 +136,20 @@ class CloudProgressSync {
         },
       ).timeout(const Duration(seconds: 15));
 
-      if (response is! Map || response['status'] != 'claimed') {
+      if (response is! Map) {
+        _lastPairingError = 'Unexpected response from pairing service.';
+        return false;
+      }
+      if (response['status'] != 'claimed') {
+        _lastPairingError = 'Pairing rejected: ${response['status'] ?? 'unknown status'}';
         return false;
       }
 
       final token = response['device_token']?.toString();
-      if (token == null || token.isEmpty) return false;
+      if (token == null || token.isEmpty) {
+        _lastPairingError = 'Pairing service did not return a device token.';
+        return false;
+      }
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_deviceTokenKey, token);
@@ -138,7 +161,8 @@ class CloudProgressSync {
         await uidManager.markRegistered();
       }
       return true;
-    } catch (_) {
+    } catch (e) {
+      _lastPairingError = e.toString();
       return false;
     }
   }
