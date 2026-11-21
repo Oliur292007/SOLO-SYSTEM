@@ -98,12 +98,13 @@ class _SecurityPageState extends State<SecurityPage> {
         title: const Text('SET UP STUDY APP PROTECTION'),
         content: const SingleChildScrollView(
           child: Text(
-            'Complete these steps in order:\\n\\n'
-            'STEP 1 — Open Accessibility Settings once. If Android does not let you enable SOLO SYSTEM yet, that is expected. Return to this app.\\n\\n'
-            'STEP 2 — Open App Info. Press the three-dot menu (⋮) at the top-right and choose Allow restricted settings. Confirm Allow.\\n\\n'
-            'STEP 3 — Return to SOLO SYSTEM. Open Security > Manage Study App Protection again.\\n\\n'
-            'STEP 4 — In Accessibility Settings, tap SOLO SYSTEM, turn on the accessibility service, read the Android warning, and confirm if you agree.\\n\\n'
-            'When enabled, SOLO SYSTEM can send you to the Home Screen if you try to open another app while a mission timer is running.',
+            'Study App Protection must be enabled manually in Android. Follow each step in order:\n\n'
+            '1. Tap OPEN ACCESSIBILITY below. Find SOLO SYSTEM. If Android does not let you enable it yet, return to the Home Screen.\n\n'
+            '2. Press and hold the SOLO SYSTEM app icon, then tap App info.\n\n'
+            '3. Tap the three-dot menu in the top-right corner. Choose Allow restricted settings and confirm. If this option is not shown, complete Step 1 first.\n\n'
+            '4. Open SOLO SYSTEM again and return to Security > Set Up Study App Protection.\n\n'
+            '5. Open SOLO SYSTEM in Accessibility Settings, switch on the service, read the Android warning, and confirm if you agree.\n\n'
+            'When the mission timer is running, the service can return you to the Home Screen if you try to open another app. It does not permanently lock or uninstall apps. You can disable the service in Android Accessibility Settings.',
           ),
         ),
         actions: [
@@ -415,42 +416,6 @@ class _SecurityPageState extends State<SecurityPage> {
           ),
 
           const SizedBox(height: 8),
-
-          _ActionTile(
-            colors: c,
-            icon: Icons.shield,
-            iconColor: Colors.cyanAccent,
-            title: 'Set Up Study App Protection',
-            subtitle: 'Follow the steps to allow restricted settings and activate Accessibility',
-            enabled: true,
-            onTap: _openStudyProtectionSettings,
-          ),
-
-          const SizedBox(height: 8),
-          _ActionTile(
-            colors: c,
-            icon: Icons.notifications_active,
-            iconColor: Colors.orangeAccent,
-            title: 'Manage Mission Notifications',
-            subtitle: 'Allow notifications in Android App Info',
-            enabled: true,
-            onTap: () async {
-              try {
-                await _studyRestrictionChannel.invokeMethod<void>(
-                  'openAppNotificationSettings',
-                );
-              } on PlatformException catch (error) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Could not open Notification Settings: ${error.message}',
-                    ),
-                  ),
-                );
-              }
-            },
-          ),
 
           const SizedBox(height: 8),
 
