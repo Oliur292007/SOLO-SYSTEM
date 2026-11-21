@@ -550,8 +550,20 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
           '4. Open SOLO SYSTEM again. Go to Security > Manage Study App Protection.\\n\\n'
           '5. In Accessibility Settings, open SOLO SYSTEM and turn on its service. Read the Android warning and confirm only if you agree.\\n\\n'
           'This lets SOLO SYSTEM return you to the Home Screen when you try to open other apps during an active mission timer. You can disable it again in Android Accessibility Settings.',
+          ),
         ),
-      );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('DO THIS LATER'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('OPEN ACCESSIBILITY SETTINGS'),
+          ),
+        ],
+      ),
+    );
 
       if (openSettings == true && mounted) {
         try {
