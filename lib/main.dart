@@ -474,17 +474,56 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
       return;
     }
 
+    bool notificationsEnabled = false;
     try {
-      await widget.notificationService.requestPermission();
+      notificationsEnabled =
+          await widget.notificationService.requestPermission();
+      if (notificationsEnabled) {
+        await _syncMissionNotificationsSafely();
+        await widget.notificationService.showPermissionConfirmation();
+      }
     } catch (error) {
       debugPrint('NOTIFICATION PERMISSION ERROR: $error');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Notification permission request failed: $error')),
+          SnackBar(content: Text('Notification setup failed: $error')),
         );
       }
     }
     if (!mounted) return;
+
+    if (!notificationsEnabled) {
+      final openNotificationSettings = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('ALLOW NOTIFICATIONS'),
+          content: const Text(
+            'SOLO SYSTEM cannot confirm that notifications are allowed. '
+            'Open App Info > Notifications and enable notifications for SOLO SYSTEM. '
+            'Then return to the app; mission reminders will be scheduled again.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('LATER'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('OPEN NOTIFICATION SETTINGS'),
+            ),
+          ],
+        ),
+      );
+      if (openNotificationSettings == true) {
+        try {
+          await _appRestrictionChannel.invokeMethod<void>(
+            'openAppNotificationSettings',
+          );
+        } catch (error) {
+          debugPrint('OPEN NOTIFICATION SETTINGS ERROR: $error');
+        }
+      }
+    }
 
     bool accessibilityEnabled = false;
     try {
@@ -504,24 +543,13 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
         builder: (dialogContext) => AlertDialog(
           title: const Text('ENABLE STUDY APP PROTECTION'),
           content: const Text(
-            'Follow these steps in Android Settings:\n\n'
-            '1. Find and tap SOLO SYSTEM in the Accessibility app list.\n'
-            '2. Turn on the SOLO SYSTEM accessibility service.\n'
-            '3. Read the Android warning and allow it only if you agree.\n\n'
-            'This permission lets SOLO SYSTEM return you to the Home Screen '
-            'when you try to open other apps during an active mission timer. '
-            'You can change this anytime from Security settings.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('DO THIS LATER'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('OPEN SETTINGS'),
-            ),
-          ],
+            'IMPORTANT: Android may block this permission until you allow restricted settings. Follow these steps in order:\\n\\n'
+          '1. Tap OPEN SETTINGS below. This first visit to Accessibility Settings is required; you may not be able to turn protection on yet.\\n\\n'
+          '2. Return to your Home Screen. Press and hold the SOLO SYSTEM app icon, then tap App info.\\n\\n'
+          '3. Tap the three-dot menu (⋮) in the top-right corner. Choose Allow restricted settings, then confirm Allow. If this option is missing, complete step 1 first.\\n\\n'
+          '4. Open SOLO SYSTEM again. Go to Security > Manage Study App Protection.\\n\\n'
+          '5. In Accessibility Settings, open SOLO SYSTEM and turn on its service. Read the Android warning and confirm only if you agree.\\n\\n'
+          'This lets SOLO SYSTEM return you to the Home Screen when you try to open other apps during an active mission timer. You can disable it again in Android Accessibility Settings.',
         ),
       );
 
