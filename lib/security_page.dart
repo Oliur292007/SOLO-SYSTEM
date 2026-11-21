@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-const MethodChannel _studyRestrictionChannel =
-    MethodChannel('solo_system/app_restriction');
-
 import 'code_entry_dialog.dart';
 import 'code_request_dialog.dart';
 import 'security_controller.dart';
@@ -12,6 +9,10 @@ import 'uid_manager.dart';
 
 // Reuse the SystemColors from main.dart
 import 'main.dart' show SystemColors;
+
+const MethodChannel _studyRestrictionChannel =
+    MethodChannel('solo_system/app_restriction');
+
 
 class SecurityPage extends StatefulWidget {
   final SecurityController controller;
