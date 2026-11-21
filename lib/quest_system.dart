@@ -642,6 +642,8 @@ class QuestSystem extends ChangeNotifier {
       category = 'INTELLECT';
     }
 
+    description = '${player.rank} challenge: $description';
+
     // Reward scales with level and recent quest activity.
     final activityBonus = min(completedCount * 5, 50);
     final reward = 75 + (player.level * 15) + activityBonus;
