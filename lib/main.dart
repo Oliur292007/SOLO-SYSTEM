@@ -344,7 +344,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.questSystem.removeListener(_onLocalProgressChanged);
     widget.studyTimer.removeListener(_onLocalProgressChanged);
     widget.timetableSystem.removeListener(_onLocalProgressChanged);
-    widget.timetableSystem.removeListener(_syncMissionNotifications);
+    widget.timetableSystem.removeListener(_onTimetableChanged);
     widget.restSystem.removeListener(_onLocalProgressChanged);
     _notificationPollTimer?.cancel();
     widget.cloudProgressSync.dispose();
