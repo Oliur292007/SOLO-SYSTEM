@@ -2017,6 +2017,153 @@ class QuestPage extends StatelessWidget {
                   ],
                 ),
               ),
+            if (questSystem.weeklySpecialDay != null) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: c.panel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: c.cyan.withValues(alpha: 0.65),
+                    width: 1.2,
+                  ),
+                ),
+                child: Builder(
+                  builder: (context) {
+                    final mission = questSystem.weeklySpecialMission;
+                    final isMissionDay = questSystem.isWeeklySpecialMissionDay;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.auto_awesome, color: c.cyan, size: 19),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'WEEKLY SPECIAL MISSION',
+                                style: TextStyle(
+                                  color: c.cyan,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              questSystem.weeklySpecialDayName.toUpperCase(),
+                              style: TextStyle(
+                                color: c.muted,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        if (mission == null)
+                          Text(
+                            'A special mission will be revealed on '
+                            '${questSystem.weeklySpecialDayName}.',
+                            style: TextStyle(color: c.text, height: 1.4),
+                          )
+                        else ...[
+                          Text(
+                            mission.title,
+                            style: TextStyle(
+                              color: c.text,
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            mission.description,
+                            style: TextStyle(color: c.muted, height: 1.4),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Text(
+                                mission.category,
+                                style: TextStyle(
+                                  color: c.cyan,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.7,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '+${mission.xpReward} XP',
+                                style: TextStyle(
+                                  color: c.cyan,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          if (mission.isCompleted)
+                            const Row(
+                              children: [
+                                Icon(Icons.check_circle, color: Colors.greenAccent, size: 18),
+                                SizedBox(width: 7),
+                                Text(
+                                  'MISSION COMPLETED',
+                                  style: TextStyle(
+                                    color: Colors.greenAccent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            )
+                          else if (isMissionDay)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: FilledButton.icon(
+                                onPressed: () async {
+                                  final earned = await questSystem
+                                      .completeWeeklySpecialMission(player);
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        earned == null
+                                            ? 'Mission could not be completed.'
+                                            : 'Special Mission completed! +$earned XP',
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.check, size: 18),
+                                label: const Text('COMPLETE MISSION'),
+                              ),
+                            )
+                          else
+                            Text(
+                              'Mission unlocks on ${questSystem.weeklySpecialDayName}.',
+                              style: TextStyle(color: c.muted, fontSize: 11),
+                            ),
+                        ],
+                        const SizedBox(height: 8),
+                        Text(
+                          'OPTIONAL • NO PENALTY IF MISSED',
+                          style: TextStyle(
+                            color: c.muted,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
             if (quests.isEmpty)
               Container(
                 padding: const EdgeInsets.all(28),
