@@ -55,6 +55,7 @@ class MissionNotificationService extends ChangeNotifier {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   final List<SystemNotification> _history = [];
+  List<StudyScheduleItem> _lastSchedules = <StudyScheduleItem>[];
   Timer? _dailyCleanupTimer;
   bool _initialized = false;
 
@@ -247,13 +248,18 @@ class MissionNotificationService extends ChangeNotifier {
         AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return true;
     await android.requestExactAlarmsPermission();
-    return await android.canScheduleExactNotifications() ?? false;
+    final granted = await android.canScheduleExactNotifications() ?? false;
+    if (granted) {
+      await syncMissionReminders(_lastSchedules);
+    }
+    return granted;
   }
 
   Future<void> syncMissionReminders(
     List<StudyScheduleItem> schedules,
   ) async {
     if (!_initialized) await initialize();
+    _lastSchedules = List<StudyScheduleItem>.from(schedules);
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         'solo_mission_reminders',
