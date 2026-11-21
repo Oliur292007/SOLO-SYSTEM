@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'notification_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'player_system.dart';
 import 'quest_system.dart';
@@ -31,6 +32,8 @@ Future<void> main() async {
   );
 
   final studyTimer = StudyTimer();
+  final notificationService = MissionNotificationService();
+  await notificationService.initialize();
 
   // UID Manager
   final uidManager = UidManager();
@@ -63,6 +66,7 @@ Future<void> main() async {
       player: player,
       questSystem: questSystem,
       studyTimer: studyTimer,
+      notificationService: notificationService,
       timetableSystem: timetableSystem,
       restSystem: restSystem,
       uidManager: uidManager,
@@ -167,6 +171,7 @@ class SoloSystemApp extends StatefulWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
   final StudyTimer studyTimer;
+  final MissionNotificationService notificationService;
   final TimetableSystem timetableSystem;
   final RestSystem restSystem;
   final UidManager uidManager;
@@ -179,6 +184,7 @@ class SoloSystemApp extends StatefulWidget {
     required this.player,
     required this.questSystem,
     required this.studyTimer,
+    required this.notificationService,
     required this.timetableSystem,
     required this.restSystem,
     required this.uidManager,
@@ -264,6 +270,7 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
         isDarkMode: isDarkMode,
         onDarkModeChanged: _changeTheme,
         studyTimer: widget.studyTimer,
+        notificationService: widget.notificationService,
         timetableSystem: widget.timetableSystem,
         restSystem: widget.restSystem,
         uidManager: widget.uidManager,
@@ -282,6 +289,7 @@ class SystemHome extends StatefulWidget {
   final bool isDarkMode;
   final ValueChanged<bool> onDarkModeChanged;
   final StudyTimer studyTimer;
+  final MissionNotificationService notificationService;
   final TimetableSystem timetableSystem;
   final RestSystem restSystem;
   final UidManager uidManager;
@@ -297,6 +305,7 @@ class SystemHome extends StatefulWidget {
     required this.isDarkMode,
     required this.onDarkModeChanged,
     required this.studyTimer,
+    required this.notificationService,
     required this.timetableSystem,
     required this.restSystem,
     required this.uidManager,
@@ -327,6 +336,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.questSystem.removeListener(_onLocalProgressChanged);
     widget.studyTimer.removeListener(_onLocalProgressChanged);
     widget.timetableSystem.removeListener(_onLocalProgressChanged);
+    widget.timetableSystem.removeListener(_syncMissionNotifications);
     widget.restSystem.removeListener(_onLocalProgressChanged);
     widget.cloudProgressSync.dispose();
     super.dispose();
@@ -387,17 +397,77 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.questSystem.addListener(_onLocalProgressChanged);
     widget.studyTimer.addListener(_onLocalProgressChanged);
     widget.timetableSystem.addListener(_onLocalProgressChanged);
+    widget.timetableSystem.addListener(_syncMissionNotifications);
+    await _syncMissionNotifications();
     widget.restSystem.addListener(_onLocalProgressChanged);
     if (widget.cloudProgressSync.isPaired) {
       widget.cloudProgressSync.startAutoSync();
     }
 
     // Show the registration / cloud-recovery prompt until this device is paired.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _showFirstLaunchSetup();
       if (mounted && !widget.cloudProgressSync.isPaired) {
-        _showRegistrationPrompt();
+        await _showRegistrationPrompt();
       }
     });
+  }
+
+  static const MethodChannel _appRestrictionChannel =
+      MethodChannel('solo_system/app_restriction');
+
+  Future<void> _syncMissionNotifications() async {
+    await widget.notificationService.syncMissionReminders(
+      widget.timetableSystem.allSchedules,
+    );
+  }
+
+  Future<void> _showFirstLaunchSetup() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('first_launch_permissions_prompted') ?? false) return;
+    if (!mounted) return;
+
+    final continueSetup = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('SET UP SOLO SYSTEM PROTECTION'),
+        content: const Text(
+          'SOLO SYSTEM can protect your focus during active missions. '
+          'Android requires you to enable its Accessibility service manually '
+          'in Settings. You will also be asked whether SOLO SYSTEM may send '
+          'mission reminders five minutes before scheduled start times.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('NOT NOW'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('CONTINUE'),
+          ),
+        ],
+      ),
+    );
+
+    await prefs.setBool('first_launch_permissions_prompted', true);
+    if (continueSetup != true || !mounted) return;
+
+    await widget.notificationService.requestPermission();
+    if (!mounted) return;
+
+    try {
+      await _appRestrictionChannel.invokeMethod<void>(
+        'openAccessibilitySettings',
+      );
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open Accessibility Settings: ${error.message}')),
+      );
+    }
   }
 
   Future<void> _showRegistrationPrompt() async {
