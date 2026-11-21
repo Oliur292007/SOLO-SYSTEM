@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'notification_service.dart';
+import 'notification_pages.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'player_system.dart';
 import 'quest_system.dart';
@@ -321,6 +322,11 @@ class SystemHome extends StatefulWidget {
 
 class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   int selectedIndex = 0;
+  final Set<String> _trackedCompleted = {};
+  final Set<String> _trackedMissed = {};
+  int _trackedLevel = 1;
+  String _trackedRank = '';
+  String _trackedTitle = '';
 
   @override
   void initState() {
@@ -343,7 +349,75 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   }
 
   void _onLocalProgressChanged() {
+    _trackProgressNotifications();
     widget.cloudProgressSync.scheduleSync();
+  }
+
+  void _trackProgressNotifications() {
+    final questSystem = widget.questSystem;
+    final player = widget.player;
+
+    final newlyCompleted =
+        questSystem.completedQuestIds.difference(_trackedCompleted);
+    final newlyMissed = questSystem.missedQuestIds.difference(_trackedMissed);
+    _trackedCompleted
+      ..clear()
+      ..addAll(questSystem.completedQuestIds);
+    _trackedMissed
+      ..clear()
+      ..addAll(questSystem.missedQuestIds);
+
+    for (final id in newlyCompleted) {
+      final quest = questSystem.getQuestById(id);
+      final name = quest?.name ?? id;
+      unawaited(widget.notificationService.addNotification(
+        'MISSION COMPLETED',
+        '$name mission completed successfully.',
+        type: 'completed',
+      ));
+      final reward = quest?.xpReward ?? 0;
+      if (reward > 0) {
+        unawaited(widget.notificationService.addNotification(
+          'MISSION REWARD RECEIVED',
+          'You received $reward XP for completing $name.',
+          type: 'reward',
+        ));
+      }
+      if (id == 'wakeup' && questSystem.dailySystemMessage.isNotEmpty) {
+        unawaited(widget.notificationService.addNotification(
+          'DAILY SYSTEM MESSAGE',
+          questSystem.dailySystemMessage,
+          type: 'message',
+        ));
+      }
+    }
+
+    for (final id in newlyMissed) {
+      final quest = questSystem.getQuestById(id);
+      unawaited(widget.notificationService.addNotification(
+        'MISSION FAILED',
+        '${quest?.name ?? id} mission was missed. Check your status and penalty.',
+        type: 'failed',
+      ));
+    }
+
+    if (player.level > _trackedLevel) {
+      unawaited(widget.notificationService.addNotification(
+        'LEVEL UP!',
+        'Congratulations! You reached Level ${player.level}.',
+        type: 'level',
+      ));
+    }
+    if (player.rank != _trackedRank || player.title != _trackedTitle) {
+      unawaited(widget.notificationService.addNotification(
+        'NEW TITLE UNLOCKED',
+        'Your new rank and title: ${player.rank} • ${player.title}.',
+        type: 'title',
+      ));
+    }
+    _trackedLevel = player.level;
+    _trackedRank = player.rank;
+    _trackedTitle = player.title;
   }
 
   Future<void> _reloadSystemsFromLocalStorage() async {
@@ -392,6 +466,16 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
         await _reloadSystemsFromLocalStorage();
       }
     }
+
+    _trackedCompleted
+      ..clear()
+      ..addAll(widget.questSystem.completedQuestIds);
+    _trackedMissed
+      ..clear()
+      ..addAll(widget.questSystem.missedQuestIds);
+    _trackedLevel = widget.player.level;
+    _trackedRank = widget.player.rank;
+    _trackedTitle = widget.player.title;
 
     widget.player.addListener(_onLocalProgressChanged);
     widget.questSystem.addListener(_onLocalProgressChanged);
@@ -777,6 +861,14 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             studyTimer: widget.studyTimer,
             securityController: widget.securityController,
             appVersionLabel: widget.appVersionLabel,
+            notificationService: widget.notificationService,
+            onNotificationsTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => NotificationHistoryPage(
+                  notificationService: widget.notificationService,
+                ),
+              ),
+            ),
           ),
           QuestPage(
             player: widget.player,
@@ -795,7 +887,9 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             isDarkMode: widget.isDarkMode,
             onDarkModeChanged: widget.onDarkModeChanged,
             appVersionLabel: widget.appVersionLabel,
+            notificationService: widget.notificationService,
           ),
+          SystemMessagePage(message: widget.questSystem.dailySystemMessage),
         ];
 
         return Scaffold(
@@ -837,6 +931,11 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
                 selectedIcon: Icon(Icons.settings, color: c.cyan),
                 label: 'Settings',
               ),
+              NavigationDestination(
+                icon: Icon(Icons.auto_awesome_outlined, color: c.muted),
+                selectedIcon: Icon(Icons.auto_awesome, color: c.cyan),
+                label: 'System Message',
+              ),
             ],
           ),
         );
@@ -857,6 +956,8 @@ class DashboardPage extends StatelessWidget {
   final StudyTimer studyTimer;
   final SecurityController securityController;
   final String appVersionLabel;
+  final MissionNotificationService notificationService;
+  final VoidCallback onNotificationsTap;
 
   const DashboardPage({
     super.key,
@@ -867,6 +968,8 @@ class DashboardPage extends StatelessWidget {
     required this.studyTimer,
     required this.securityController,
     required this.appVersionLabel,
+    required this.notificationService,
+    required this.onNotificationsTap,
   });
 
   @override
@@ -907,14 +1010,17 @@ class DashboardPage extends StatelessWidget {
                 ),
               ],
             ),
-            Container(
-              padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(
-                color: c.panel,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: c.blue.withValues(alpha: 0.4)),
+            IconButton(
+              tooltip: 'Notifications',
+              onPressed: onNotificationsTap,
+              style: IconButton.styleFrom(
+                backgroundColor: c.panel,
+                side: BorderSide(color: c.blue.withValues(alpha: 0.4)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              child: Icon(Icons.notifications_active_outlined, color: c.cyan),
+              icon: Icon(Icons.notifications_active_outlined, color: c.cyan),
             ),
           ],
         ),
@@ -929,46 +1035,7 @@ class DashboardPage extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: c.cyan.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(Icons.auto_awesome, color: c.cyan, size: 21),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'DAILY SYSTEM MESSAGE',
-                      style: TextStyle(
-                        color: c.cyan,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      questSystem.dailySystemMessage.isEmpty
-                          ? 'The System is preparing your daily message...'
-                          : questSystem.dailySystemMessage,
-                      style: TextStyle(
-                        color: c.text,
-                        fontSize: 13,
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
+              const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -1635,30 +1702,6 @@ class DashboardPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 22),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: c.panel,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: c.cyan.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.info_outline, color: c.cyan),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'SYSTEM MESSAGE: Your journey to become stronger starts today.',
-                  style: TextStyle(
-                    color: c.text.withValues(alpha: 0.85),
-                    fontSize: 11,
-                    height: 1.5,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
         const SizedBox(height: 20),
         Center(
           child: Text(
@@ -3368,6 +3411,7 @@ class SettingsPage extends StatelessWidget {
   final bool isDarkMode;
   final ValueChanged<bool> onDarkModeChanged;
   final String appVersionLabel;
+  final MissionNotificationService notificationService;
 
   const SettingsPage({
     super.key,
@@ -3375,6 +3419,7 @@ class SettingsPage extends StatelessWidget {
     required this.isDarkMode,
     required this.onDarkModeChanged,
     required this.appVersionLabel,
+    required this.notificationService,
   });
 
   Future<void> _editPlayerName(BuildContext context) async {
@@ -3463,11 +3508,17 @@ class SettingsPage extends StatelessWidget {
               ),
               Divider(color: c.divider, height: 1),
               ListTile(
-                leading: Icon(Icons.notifications_outlined, color: c.cyan),
-                title: Text('Notifications', style: TextStyle(color: c.text)),
-                trailing: Text(
-                  'Coming Soon',
-                  style: TextStyle(color: c.muted, fontSize: 11),
+                leading: Icon(Icons.security_outlined, color: c.cyan),
+                title: Text('Permissions', style: TextStyle(color: c.text)),
+                subtitle: Text('Manage app permissions and protection',
+                    style: TextStyle(color: c.muted)),
+                trailing: Icon(Icons.chevron_right, color: c.muted),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => PermissionManagementPage(
+                      notificationService: notificationService,
+                    ),
+                  ),
                 ),
               ),
               Divider(color: c.divider, height: 1),
