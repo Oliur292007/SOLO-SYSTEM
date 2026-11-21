@@ -78,15 +78,63 @@ class _SecurityPageState extends State<SecurityPage> {
     );
   }
 
-  Future<void> _openStudyProtectionSettings() async {
+  Future<void> _openAppInfoSettings() async {
     try {
       await _studyRestrictionChannel.invokeMethod<void>(
-        'openAccessibilitySettings',
+        'openAppDetailsSettings',
       );
     } on PlatformException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open Accessibility Settings: ${error.message}')),
+        SnackBar(content: Text('Could not open App Info: ${error.message}')),
+      );
+    }
+  }
+
+  Future<void> _openStudyProtectionSettings() async {
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('SET UP STUDY APP PROTECTION'),
+        content: const SingleChildScrollView(
+          child: Text(
+            'Complete these steps in order:\\n\\n'
+            'STEP 1 — Open Accessibility Settings once. If Android does not let you enable SOLO SYSTEM yet, that is expected. Return to this app.\\n\\n'
+            'STEP 2 — Open App Info. Press the three-dot menu (⋮) at the top-right and choose Allow restricted settings. Confirm Allow.\\n\\n'
+            'STEP 3 — Return to SOLO SYSTEM. Open Security > Manage Study App Protection again.\\n\\n'
+            'STEP 4 — In Accessibility Settings, tap SOLO SYSTEM, turn on the accessibility service, read the Android warning, and confirm if you agree.\\n\\n'
+            'When enabled, SOLO SYSTEM can send you to the Home Screen if you try to open another app while a mission timer is running.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'later'),
+            child: const Text('CLOSE'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(dialogContext, 'app_info'),
+            child: const Text('OPEN APP INFO'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'accessibility'),
+            child: const Text('OPEN ACCESSIBILITY'),
+          ),
+        ],
+      ),
+    );
+
+    try {
+      if (action == 'app_info') {
+        await _openAppInfoSettings();
+      } else if (action == 'accessibility') {
+        await _studyRestrictionChannel.invokeMethod<void>(
+          'openAccessibilitySettings',
+        );
+      }
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open Android Settings: ${error.message}')),
       );
     }
   }
@@ -372,8 +420,8 @@ class _SecurityPageState extends State<SecurityPage> {
             colors: c,
             icon: Icons.shield,
             iconColor: Colors.cyanAccent,
-            title: 'Manage Study App Protection',
-            subtitle: 'Open Android Accessibility Settings if setup was skipped or protection is disabled',
+            title: 'Set Up Study App Protection',
+            subtitle: 'Follow the steps to allow restricted settings and activate Accessibility',
             enabled: true,
             onTap: _openStudyProtectionSettings,
           ),
