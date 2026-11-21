@@ -122,6 +122,8 @@ class QuestSystem extends ChangeNotifier {
   static const String _specialWeekKey = 'weekly_special_week';
   static const String _specialDayKey = 'weekly_special_day';
   static const String _specialMissionKey = 'weekly_special_mission';
+  static const String _dailyMessageDateKey = 'daily_system_message_date';
+  static const String _dailyMessageTextKey = 'daily_system_message_text';
 
   static const Duration penaltyDuration = Duration(hours: 4);
   static const Duration hpCriticalPenalty = Duration(hours: 2);
@@ -150,6 +152,7 @@ class QuestSystem extends ChangeNotifier {
 
   int? weeklySpecialDay;
   WeeklySpecialMission? weeklySpecialMission;
+  String dailySystemMessage = '';
 
   DateTime? penaltyUntil;
 
@@ -509,6 +512,7 @@ class QuestSystem extends ChangeNotifier {
     }
 
     await _ensureWeeklySpecialMission();
+    await _ensureDailySystemMessage();
 
     isLoaded = true;
 
@@ -683,6 +687,76 @@ class QuestSystem extends ChangeNotifier {
     await player.addXp(mission.xpReward);
     notifyListeners();
     return mission.xpReward;
+  }
+
+  // ============================================================
+  // DAILY SYSTEM MESSAGE
+  // ============================================================
+
+  String _todayDateKey() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _ensureDailySystemMessage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _todayDateKey();
+    final savedDate = prefs.getString(_dailyMessageDateKey);
+    final savedMessage = prefs.getString(_dailyMessageTextKey);
+
+    if (savedDate == today && savedMessage != null && savedMessage.isNotEmpty) {
+      dailySystemMessage = savedMessage;
+      return;
+    }
+
+    final player = restSystem.player;
+    final messages = <String>[];
+
+    if (player.hp <= 0) {
+      messages.add('Your HP is critical. Recover first, then return stronger.');
+    } else if (player.hp < player.maxHp * 0.3) {
+      messages.add('Your HP is running low. A wise Hunter knows when to recover.');
+    }
+
+    if (player.mp < player.maxMp * 0.25) {
+      messages.add('Your MP is nearly depleted. Manage your energy before the next challenge.');
+    }
+
+    if (missedQuestIds.isNotEmpty) {
+      messages.add('Yesterday is history. Learn from every missed mission and reclaim today.');
+      messages.add('A setback does not define a Hunter. Your next decision does.');
+    }
+
+    if (player.currentTodayStudyMinutes == 0) {
+      messages.add('Every great Hunter starts with one step. Begin today with focused effort.');
+    } else if (player.currentTodayStudyMinutes >= 120) {
+      messages.add('Your dedication is building momentum. Keep your focus sharp.');
+    }
+
+    if (player.xpProgress >= 0.8) {
+      messages.add('You are close to the next level. One more strong effort may change your rank.');
+    }
+
+    if (player.level <= 5) {
+      messages.add('Every legend begins at E-Rank. Stay consistent and keep awakening.');
+    } else if (player.level <= 20) {
+      messages.add('Your growth is visible, Hunter. Turn consistency into strength.');
+    } else if (player.level <= 50) {
+      messages.add('Your rank carries responsibility. Lead your progress with discipline.');
+    } else {
+      messages.add('A powerful Hunter never stops evolving. Your next limit is waiting.');
+    }
+
+    messages.add('Today is another opportunity to become stronger than yesterday.');
+    messages.add('Discipline is your weapon. Use it before motivation fades.');
+    messages.add('Focus on the mission in front of you. Progress will follow.');
+    messages.add('Do not chase perfection. Complete today’s mission with purpose.');
+
+    final selected = messages[Random().nextInt(messages.length)];
+    dailySystemMessage = selected;
+    await prefs.setString(_dailyMessageDateKey, today);
+    await prefs.setString(_dailyMessageTextKey, selected);
   }
 
   // ============================================================
