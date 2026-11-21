@@ -1,5 +1,6 @@
 package com.example.solo_system
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
@@ -33,7 +34,7 @@ class MainActivity : FlutterActivity() {
                     "isAccessibilityEnabled" -> {
                         val manager = getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
                         val enabled = manager.getEnabledAccessibilityServiceList(
-                            AccessibilityManager.FEEDBACK_ALL_MASK
+                            AccessibilityServiceInfo.FEEDBACK_ALL_MASK
                         ).any {
                             it.resolveInfo.serviceInfo.packageName == packageName &&
                                 it.resolveInfo.serviceInfo.name ==
