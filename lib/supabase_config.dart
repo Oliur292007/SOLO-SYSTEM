@@ -16,7 +16,6 @@ class SupabaseConfig {
 
   // Fallback config (used when offline & never fetched from server)
   static const Map<String, String> fallbackConfig = {
-    'whatsapp_number': '+8801408652342',
     'code_expiry_minutes': '30',
     'emergency_unlock_minutes': '30',
     'youtube_warning_interval_minutes': '5',
