@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'player_system.dart';
 import 'quest_system.dart';
 import 'study_timer.dart';
@@ -363,6 +364,181 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.studyTimer.addListener(_onLocalProgressChanged);
     widget.timetableSystem.addListener(_onLocalProgressChanged);
     widget.restSystem.addListener(_onLocalProgressChanged);
+
+    // Show the registration / cloud-recovery prompt until this device is paired.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !widget.cloudProgressSync.isPaired) {
+        _showRegistrationPrompt();
+      }
+    });
+  }
+
+  Future<void> _showRegistrationPrompt() async {
+    if (!mounted || widget.cloudProgressSync.isPaired) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('WELCOME TO SOLO SYSTEM'),
+        content: Text(
+          'Your Player UID:\n${widget.uidManager.uid ?? '—'}\n\n'
+          'Complete your Telegram registration, or retrieve your existing '
+          'player progress from the cloud.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('LATER'),
+          ),
+          OutlinedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _showRetrieveProgressDialog();
+            },
+            child: const Text('RETRIEVE PROGRESS'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              final uid = widget.uidManager.uid ?? '';
+              final command =
+                  'REG. UID: $uid, USER: +8801XXXXXXXXX';
+              final uri = Uri.parse(
+                'https://t.me/Solo_Sysyem_Bot?text=${Uri.encodeComponent(command)}',
+              );
+              final opened = await launchUrl(
+                uri,
+                mode: LaunchMode.externalApplication,
+              );
+              if (!opened && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Could not open Telegram. Open @Solo_Sysyem_Bot manually.',
+                    ),
+                  ),
+                );
+              }
+            },
+            child: const Text('COMPLETE REGISTRATION'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showRetrieveProgressDialog() async {
+    final uidController = TextEditingController(
+      text: widget.uidManager.uid ?? '',
+    );
+    final tokenController = TextEditingController();
+    bool isClaiming = false;
+
+    final claimed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: !isClaiming,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('RETRIEVE YOUR PROGRESS'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'After registration, the Telegram Bot sends a one-time '
+                  '10-minute device pairing token. Paste it below.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: uidController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'SOLO UID',
+                    hintText: 'SOLO-XXXX-XXXX-XXXX',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: tokenController,
+                  decoration: const InputDecoration(
+                    labelText: 'Telegram pairing token',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isClaiming
+                  ? null
+                  : () => Navigator.pop(dialogContext, false),
+              child: const Text('CANCEL'),
+            ),
+            FilledButton(
+              onPressed: isClaiming
+                  ? null
+                  : () async {
+                      final uid = uidController.text.trim().toUpperCase();
+                      final token = tokenController.text.trim();
+                      if (uid.isEmpty || token.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Enter both UID and pairing token.'),
+                          ),
+                        );
+                        return;
+                      }
+                      setDialogState(() => isClaiming = true);
+                      final success = await widget.cloudProgressSync
+                          .claimPairingToken(token, uidOverride: uid);
+                      if (!dialogContext.mounted) return;
+                      if (success) {
+                        Navigator.pop(dialogContext, true);
+                      } else {
+                        setDialogState(() => isClaiming = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Pairing failed. Check the UID/token or send '
+                              'PAIR again in Telegram for a fresh token.',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+              child: isClaiming
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('PAIR DEVICE'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    uidController.dispose();
+    tokenController.dispose();
+
+    if (claimed == true && mounted) {
+      final result = await widget.cloudProgressSync.syncNow();
+      await _reloadSystemsFromLocalStorage();
+      if (!mounted) return;
+      final message = result.status == CloudSyncStatus.restored
+          ? 'Cloud progress restored successfully.'
+          : result.status == CloudSyncStatus.synced
+              ? 'Device paired. Your current progress is now backed up.'
+              : 'Device paired, but cloud sync needs attention: ${result.message ?? result.status.name}';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      setState(() {});
+    }
   }
 
   @override
