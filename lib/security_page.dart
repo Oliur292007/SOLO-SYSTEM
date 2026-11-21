@@ -427,6 +427,32 @@ class _SecurityPageState extends State<SecurityPage> {
           ),
 
           const SizedBox(height: 8),
+          _ActionTile(
+            colors: c,
+            icon: Icons.notifications_active,
+            iconColor: Colors.orangeAccent,
+            title: 'Manage Mission Notifications',
+            subtitle: 'Allow notifications in Android App Info',
+            enabled: true,
+            onTap: () async {
+              try {
+                await _studyRestrictionChannel.invokeMethod<void>(
+                  'openAppNotificationSettings',
+                );
+              } on PlatformException catch (error) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Could not open Notification Settings: ${error.message}',
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
+
+          const SizedBox(height: 8),
 
           _ActionTile(
             colors: c,
