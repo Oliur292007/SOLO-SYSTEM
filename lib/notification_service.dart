@@ -274,11 +274,6 @@ class MissionNotificationService extends ChangeNotifier {
 
     final prefs = await SharedPreferences.getInstance();
     final previousIds = prefs.getStringList(_storedIdsKey) ?? <String>[];
-    for (final value in previousIds) {
-      final id = int.tryParse(value);
-      if (id != null) await _plugin.cancel(id);
-    }
-
     final newIds = <String>[];
     final exactAllowed = await canScheduleExactNotifications();
     final scheduleMode = exactAllowed
@@ -298,13 +293,19 @@ class MissionNotificationService extends ChangeNotifier {
       final reminder = nextStart.subtract(const Duration(minutes: 5));
 
       if (reminder.isAfter(now)) {
-        await _plugin.zonedSchedule(
-          id, title, body, reminder, details,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          androidScheduleMode: scheduleMode,
-          matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-        );
+        try {
+          await _plugin.zonedSchedule(
+            id, title, body, reminder, details,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+            androidScheduleMode: scheduleMode,
+            matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+          );
+        } catch (error, stackTrace) {
+          debugPrint('FAILED TO SCHEDULE REMINDER $id at $reminder: $error');
+          debugPrintStack(stackTrace: stackTrace);
+          rethrow;
+        }
         newIds.add(id.toString());
         return;
       }
@@ -376,7 +377,18 @@ class MissionNotificationService extends ChangeNotifier {
         body: 'Your ${item.subject} schedule starts at ${item.startTime}. Get ready, Hunter.',
       );
     }
+    // Commit the new schedule first. Only then remove obsolete alarm IDs.
+    final retainedIds = newIds.toSet();
+    for (final value in previousIds) {
+      if (retainedIds.contains(value)) continue;
+      final id = int.tryParse(value);
+      if (id != null) await _plugin.cancel(id);
+    }
     await prefs.setStringList(_storedIdsKey, newIds);
+    debugPrint(
+      'MISSION REMINDERS SYNCED: ${schedules.length} schedules, '
+      '${newIds.length} alarms, exact=$exactAllowed',
+    );
   }
 
   @override
