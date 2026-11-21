@@ -443,36 +443,7 @@ class TimetableSystem extends ChangeNotifier {
   }
 
   bool _isValidTime(String value) {
-    return RegExp(r'^([01]\d|2[0-3]):([0-5]\d)
-
-  bool _isValidScheduleData(StudyScheduleItem item) {
-    if (item.id.isEmpty) return false;
-    if (item.dayOfWeek < 1 || item.dayOfWeek > 7) return false;
-    if (item.subject.trim().isEmpty) return false;
-    if (item.subject.length > _maxSubjectLength) return false;
-    if (item.durationMinutes <= 0) return false;
-    if (!_isValidTime(item.startTime)) return false;
-    if (item.isOptional && item.dayOfWeek != 5) return false;
-
-    // Note: do NOT re-run overlap detection on load —
-    // historical data might contain overlaps from before this rule.
-    return true;
-  }
-
-  // ============================================================
-  // PERSISTENCE
-  // ============================================================
-
-  Future<bool> _saveTimetable() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final data = _schedules.map((item) => item.toJson()).toList();
-      return await prefs.setString(_storageKey, jsonEncode(data));
-    } catch (_) {
-      return false;
-    }
-  }
-}).hasMatch(value);
+    return RegExp(r'^([01]\\d|2[0-3]):([0-5]\\d)$').hasMatch(value);
   }
 
   bool _isValidScheduleData(StudyScheduleItem item) {
@@ -483,9 +454,6 @@ class TimetableSystem extends ChangeNotifier {
     if (item.durationMinutes <= 0) return false;
     if (!_isValidTime(item.startTime)) return false;
     if (item.isOptional && item.dayOfWeek != 5) return false;
-
-    // Note: do NOT re-run overlap detection on load —
-    // historical data might contain overlaps from before this rule.
     return true;
   }
 
