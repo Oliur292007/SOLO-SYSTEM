@@ -438,7 +438,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   }
 
   Future<void> _showFirstLaunchSetup() async {
-    const onboardingVersion = 2;
+    const onboardingVersion = 3;
     const onboardingVersionKey = 'first_launch_onboarding_version';
     final prefs = await SharedPreferences.getInstance();
     if ((prefs.getInt(onboardingVersionKey) ?? 0) >= onboardingVersion) {
