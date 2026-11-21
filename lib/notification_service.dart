@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -126,7 +127,7 @@ class MissionNotificationService {
 
     // Daily fixed missions: Wakeup at 5:00 AM and Sleeping at 8:00 PM.
     await scheduleWeekly(
-      id: 10001,
+      id: 11000,
       weekday: DateTime.monday,
       hour: 5,
       minute: 0,
@@ -134,7 +135,7 @@ class MissionNotificationService {
       body: 'Your Wakeup Mission starts at 5:00 AM. Get ready, Hunter.',
     );
     await scheduleWeekly(
-      id: 10002,
+      id: 11001,
       weekday: DateTime.monday,
       hour: 20,
       minute: 0,
@@ -145,7 +146,7 @@ class MissionNotificationService {
     // Repeat the two fixed daily reminders for every weekday.
     for (var day = DateTime.tuesday; day <= DateTime.sunday; day++) {
       await scheduleWeekly(
-        id: 10001 + day - DateTime.monday,
+        id: 11000 + (day - DateTime.monday) * 2,
         weekday: day,
         hour: 5,
         minute: 0,
@@ -153,7 +154,7 @@ class MissionNotificationService {
         body: 'Your Wakeup Mission starts at 5:00 AM. Get ready, Hunter.',
       );
       await scheduleWeekly(
-        id: 10008 + day - DateTime.tuesday,
+        id: 11001 + (day - DateTime.monday) * 2,
         weekday: day,
         hour: 20,
         minute: 0,
