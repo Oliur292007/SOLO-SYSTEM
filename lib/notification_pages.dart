@@ -152,6 +152,7 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
   static const MethodChannel _channel =
       MethodChannel('solo_system/app_restriction');
   bool _notificationsEnabled = false;
+  bool _exactAlarmsEnabled = false;
   bool _accessibilityEnabled = false;
   bool _checking = true;
 
@@ -176,6 +177,8 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
   Future<void> _refresh() async {
     final notifications =
         await widget.notificationService.areNotificationsEnabled();
+    final exactAlarms =
+        await widget.notificationService.canScheduleExactNotifications();
     bool accessibility = false;
     try {
       accessibility =
@@ -184,6 +187,7 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
     if (!mounted) return;
     setState(() {
       _notificationsEnabled = notifications;
+      _exactAlarmsEnabled = exactAlarms;
       _accessibilityEnabled = accessibility;
       _checking = false;
     });
@@ -248,6 +252,25 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
             subtitle: 'Mission reminders, rewards and System updates',
             enabled: _notificationsEnabled,
             onTap: () => _open('openAppNotificationSettings'),
+          ),
+          _permissionTile(
+            icon: Icons.alarm,
+            title: 'Exact Alarm / Schedule Reminders',
+            subtitle: 'Allow precise reminders five minutes before each schedule',
+            enabled: _exactAlarmsEnabled,
+            onTap: () async {
+              final granted =
+                  await widget.notificationService.requestExactAlarmPermission();
+              if (!mounted) return;
+              await _refresh();
+              if (!granted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Exact alarm access is still disabled.'),
+                  ),
+                );
+              }
+            },
           ),
           _permissionTile(
             icon: Icons.accessibility_new,
