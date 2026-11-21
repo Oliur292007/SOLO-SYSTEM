@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -7,15 +10,62 @@ import 'package:timezone/timezone.dart' as tz;
 
 import 'timetable_system.dart';
 
-class MissionNotificationService {
+class SystemNotification {
+  final int id;
+  final String title;
+  final String body;
+  final String type;
+  final DateTime createdAt;
+
+  const SystemNotification({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.type,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'body': body,
+        'type': type,
+        'createdAt': createdAt.millisecondsSinceEpoch,
+      };
+
+  factory SystemNotification.fromJson(Map<String, dynamic> json) =>
+      SystemNotification(
+        id: json['id'] as int,
+        title: json['title'] as String,
+        body: json['body'] as String,
+        type: json['type'] as String? ?? 'system',
+        createdAt: DateTime.fromMillisecondsSinceEpoch(
+          json['createdAt'] as int,
+        ),
+      );
+}
+
+class MissionNotificationService extends ChangeNotifier {
   static const MethodChannel _channel =
       MethodChannel('solo_system/app_restriction');
   static const String _storedIdsKey = 'mission_reminder_notification_ids';
+  static const String _historyKey = 'solo_notification_history';
+  static const String _historyDateKey = 'solo_notification_history_date';
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
-
+  final List<SystemNotification> _history = [];
+  Timer? _dailyCleanupTimer;
   bool _initialized = false;
+
+  List<SystemNotification> get history =>
+      List<SystemNotification>.unmodifiable(_history);
+
+  String _todayKey() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+  }
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -35,21 +85,108 @@ class MissionNotificationService {
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(),
     );
-
     await _plugin.initialize(settings);
     _initialized = true;
+    await _ensureToday();
+    _dailyCleanupTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => unawaited(_ensureToday()),
+    );
+  }
+
+  Future<void> _ensureToday() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _todayKey();
+    if (prefs.getString(_historyDateKey) != today) {
+      _history.clear();
+      await prefs.setString(_historyKey, jsonEncode(<dynamic>[]));
+      await prefs.setString(_historyDateKey, today);
+      notifyListeners();
+      return;
+    }
+    if (_history.isEmpty) {
+      final raw = prefs.getString(_historyKey);
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw) as List<dynamic>;
+          _history.addAll(decoded.map((item) => SystemNotification.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              )));
+          _history.removeWhere((item) =>
+              '${item.createdAt.year}-'
+              '${item.createdAt.month.toString().padLeft(2, '0')}-'
+              '${item.createdAt.day.toString().padLeft(2, '0')}' != today);
+        } catch (error) {
+          debugPrint('NOTIFICATION HISTORY LOAD ERROR: $error');
+          _history.clear();
+        }
+      }
+    }
+  }
+
+  Future<void> _saveHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_historyKey, jsonEncode(
+      _history.map((item) => item.toJson()).toList(),
+    ));
+    await prefs.setString(_historyDateKey, _todayKey());
+  }
+
+  Future<void> addNotification(
+    String title,
+    String body, {
+    String type = 'system',
+    bool showOnDevice = true,
+  }) async {
+    if (!_initialized) await initialize();
+    await _ensureToday();
+    final now = DateTime.now();
+    final id = now.microsecondsSinceEpoch & 0x7fffffff;
+    final entry = SystemNotification(
+      id: id == 0 ? 1 : id,
+      title: title,
+      body: body,
+      type: type,
+      createdAt: now,
+    );
+    _history.add(entry);
+    await _saveHistory();
+    notifyListeners();
+
+    if (showOnDevice) {
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'solo_mission_reminders',
+          'Mission Reminders',
+          channelDescription:
+              'Mission reminders and important SOLO SYSTEM updates.',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      );
+      try {
+        await _plugin.show(entry.id, title, body, details);
+      } catch (error) {
+        debugPrint('SHOW SYSTEM NOTIFICATION ERROR: $error');
+      }
+    }
+  }
+
+  Future<void> clearHistory() async {
+    _history.clear();
+    await _saveHistory();
+    notifyListeners();
   }
 
   Future<bool> requestPermission() async {
     if (!_initialized) await initialize();
-
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (android != null) {
       await android.requestNotificationsPermission();
       return await android.areNotificationsEnabled() ?? false;
     }
-
     final ios = _plugin.resolvePlatformSpecificImplementation<
         IOSFlutterLocalNotificationsPlugin>();
     return await ios?.requestPermissions(
@@ -71,23 +208,10 @@ class MissionNotificationService {
   }
 
   Future<void> showPermissionConfirmation() async {
-    if (!_initialized) await initialize();
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'solo_mission_reminders',
-        'Mission Reminders',
-        channelDescription:
-            'Reminders sent five minutes before scheduled missions.',
-        importance: Importance.high,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
-    );
-    await _plugin.show(
-      19001,
+    await addNotification(
       'SOLO SYSTEM Notifications Enabled',
-      'Mission reminders are active. You will be notified 5 minutes before missions.',
-      details,
+      'Mission reminders and system updates are active.',
+      type: 'permission',
     );
   }
 
@@ -102,14 +226,8 @@ class MissionNotificationService {
   tz.TZDateTime _nextWeeklyReminder(int weekday, int hour, int minute) {
     final now = tz.TZDateTime.now(tz.local);
     var candidate = tz.TZDateTime(
-      tz.local,
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
+      tz.local, now.year, now.month, now.day, hour, minute,
     ).subtract(const Duration(minutes: 5));
-
     while (candidate.weekday != weekday || !candidate.isAfter(now)) {
       candidate = candidate.add(const Duration(days: 1));
     }
@@ -120,13 +238,12 @@ class MissionNotificationService {
     List<StudyScheduleItem> schedules,
   ) async {
     if (!_initialized) await initialize();
-
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         'solo_mission_reminders',
         'Mission Reminders',
         channelDescription:
-            'Reminders sent five minutes before scheduled missions.',
+            'Mission reminders and important SOLO SYSTEM updates.',
         importance: Importance.high,
         priority: Priority.high,
       ),
@@ -134,15 +251,13 @@ class MissionNotificationService {
     );
 
     final prefs = await SharedPreferences.getInstance();
-    final previousIds =
-        prefs.getStringList(_storedIdsKey) ?? <String>[];
+    final previousIds = prefs.getStringList(_storedIdsKey) ?? <String>[];
     for (final value in previousIds) {
       final id = int.tryParse(value);
       if (id != null) await _plugin.cancel(id);
     }
 
     final newIds = <String>[];
-
     Future<void> scheduleWeekly({
       required int id,
       required int weekday,
@@ -153,11 +268,7 @@ class MissionNotificationService {
     }) async {
       final reminder = _nextWeeklyReminder(weekday, hour, minute);
       await _plugin.zonedSchedule(
-        id,
-        title,
-        body,
-        reminder,
-        details,
+        id, title, body, reminder, details,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
@@ -166,26 +277,7 @@ class MissionNotificationService {
       newIds.add(id.toString());
     }
 
-    // Daily fixed missions: Wakeup at 5:00 AM and Sleeping at 8:00 PM.
-    await scheduleWeekly(
-      id: 11000,
-      weekday: DateTime.monday,
-      hour: 5,
-      minute: 0,
-      title: 'WAKEUP MISSION IN 5 MINUTES',
-      body: 'Your Wakeup Mission starts at 5:00 AM. Get ready, Hunter.',
-    );
-    await scheduleWeekly(
-      id: 11001,
-      weekday: DateTime.monday,
-      hour: 20,
-      minute: 0,
-      title: 'SLEEPING MISSION IN 5 MINUTES',
-      body: 'Your Sleeping Mission becomes available at 8:00 PM.',
-    );
-
-    // Repeat the two fixed daily reminders for every weekday.
-    for (var day = DateTime.tuesday; day <= DateTime.sunday; day++) {
+    for (var day = DateTime.monday; day <= DateTime.sunday; day++) {
       await scheduleWeekly(
         id: 11000 + (day - DateTime.monday) * 2,
         weekday: day,
@@ -208,17 +300,22 @@ class MissionNotificationService {
       final parts = item.startTime.split(':');
       final hour = int.parse(parts[0]);
       final minute = int.parse(parts[1]);
-      final id = _stableId('schedule_${item.id}');
       await scheduleWeekly(
-        id: id,
+        id: _stableId('schedule_${item.id}'),
         weekday: item.dayOfWeek,
         hour: hour,
         minute: minute,
         title: 'MISSION IN 5 MINUTES',
         body: 'Your ${item.subject} schedule starts at ${item.startTime}. Get ready, Hunter.',
       );
+      newIds.add(_stableId('schedule_${item.id}').toString());
     }
-
     await prefs.setStringList(_storedIdsKey, newIds);
+  }
+
+  @override
+  void dispose() {
+    _dailyCleanupTimer?.cancel();
+    super.dispose();
   }
 }
