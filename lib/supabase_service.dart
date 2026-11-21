@@ -71,7 +71,7 @@ class SupabaseService {
     try {
       await Supabase.initialize(
         url: SupabaseConfig.supabaseUrl,
-        anonKey: SupabaseConfig.publishableKey,
+        publishableKey: SupabaseConfig.publishableKey,
       );
       _client = Supabase.instance.client;
     } catch (e) {
