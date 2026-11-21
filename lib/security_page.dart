@@ -133,7 +133,7 @@ class _SecurityPageState extends State<SecurityPage> {
               _diagRow('Online', '$isOnline'),
               _diagRow('Supabase client',
                   widget.supabaseService.client != null ? 'OK' : 'NULL'),
-              _diagRow('WhatsApp', widget.supabaseService.whatsappNumber),
+              _diagRow('Registration authority', 'Telegram Bot'),
               _diagRow('Config count',
                   widget.supabaseService.config.length.toString()),
               _diagRow('Whitelist count',
@@ -395,13 +395,13 @@ class _SecurityPageState extends State<SecurityPage> {
                 _InfoStep(
                   colors: c,
                   number: '2',
-                  text: 'Send your UID to the WhatsApp number shown.',
+                  text: 'Send the matching GIVE command to the SOLO SYSTEM Telegram Bot from your linked Telegram account.',
                 ),
                 _InfoStep(
                   colors: c,
                   number: '3',
                   text:
-                      'Developer replies with EMU-XXXX-XXXX and UNI-XXXX-XXXX codes.',
+                      'The Bot sends your request for developer approval, then privately delivers the approved code.',
                 ),
                 _InfoStep(
                   colors: c,
@@ -412,7 +412,7 @@ class _SecurityPageState extends State<SecurityPage> {
                 _InfoStep(
                   colors: c,
                   number: '5',
-                  text: 'Codes expire 30 minutes after generation.',
+                  text: 'Emergency Unlock and Protected Uninstall require separate codes.',
                   isLast: true,
                 ),
               ],
@@ -421,45 +421,26 @@ class _SecurityPageState extends State<SecurityPage> {
 
           const SizedBox(height: 24),
 
-          // ============ SUPPORT ============
-          _SectionLabel(text: 'HELP CENTER', color: c.muted),
+          // ============ TELEGRAM SUPPORT ============
+          _SectionLabel(text: 'TELEGRAM BOT', color: c.muted),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.green.withValues(alpha: 0.10),
+              color: const Color(0xFF229ED9).withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: Colors.green.withValues(alpha: 0.35),
+                color: const Color(0xFF229ED9).withValues(alpha: 0.35),
               ),
             ),
             child: Row(
               children: [
-                Icon(Icons.chat_bubble, color: Colors.green, size: 28),
+                const Icon(Icons.send, color: Color(0xFF229ED9), size: 27),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'WhatsApp Support',
-                        style: TextStyle(
-                          color: c.text,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      SelectableText(
-                        widget.supabaseService.whatsappNumber,
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontSize: 13,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    'Use the SOLO SYSTEM Telegram Bot from the Telegram account linked to this UID. Code requests require developer approval and are delivered privately by the Bot.',
+                    style: TextStyle(color: c.text, fontSize: 12, height: 1.45),
                   ),
                 ),
               ],
