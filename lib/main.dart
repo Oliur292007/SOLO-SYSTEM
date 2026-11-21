@@ -459,6 +459,12 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     if (!mounted) return;
 
     try {
+      final alreadyEnabled =
+          await _appRestrictionChannel.invokeMethod<bool>(
+                'isAccessibilityEnabled',
+              ) ??
+              false;
+      if (alreadyEnabled) return;
       await _appRestrictionChannel.invokeMethod<void>(
         'openAccessibilitySettings',
       );
