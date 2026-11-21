@@ -51,7 +51,7 @@ class CodeRequestDialog extends StatelessWidget {
     return AlertDialog(
       title: const Row(
         children: [
-          Icon(Icons.telegram, color: Color(0xFF229ED9)),
+          Icon(Icons.send, color: Color(0xFF229ED9)),
           SizedBox(width: 8),
           Expanded(
             child: Text(
