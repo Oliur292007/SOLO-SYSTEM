@@ -144,14 +144,8 @@ class SecurityController extends ChangeNotifier {
   // ============================================================
 
   Future<void> forceSync() async {
+    // Registration and UID linking are completed by the Telegram Bot only.
     await supabaseService.forceSync();
-    // Re-register if pending
-    if (!uidManager.isRegistered && uidManager.hasUid) {
-      await supabaseService.registerUser(
-        playerName: 'Shadow Hunter',
-        silent: true,
-      );
-    }
     notifyListeners();
   }
 }
