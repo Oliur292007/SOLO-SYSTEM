@@ -355,14 +355,6 @@ class StudyTimer extends ChangeNotifier {
 
     try {
       final questId = activeQuestId!;
-      final quest = questSystem.getQuestById(questId);
-
-      if (quest == null || !quest.requiresTimer) {
-        debugPrint('CLAIM ERROR: Quest not found or timer not required');
-        return null;
-      }
-
-      final studyMinutes = quest.durationMinutes;
       final mpToDeduct = reservedMp;
 
       if (mpToDeduct <= 0) {
@@ -370,6 +362,35 @@ class StudyTimer extends ChangeNotifier {
         return null;
       }
 
+      if (questId.startsWith('weekly_special_')) {
+        final mission = questSystem.weeklySpecialMission;
+        if (mission == null ||
+            questId != 'weekly_special_${mission.weekKey}' ||
+            mission.durationMinutes <= 0) {
+          debugPrint('CLAIM ERROR: Timed special mission not found');
+          return null;
+        }
+
+        final earnedXp =
+            await questSystem.completeWeeklySpecialMission(player);
+        if (earnedXp == null) {
+          debugPrint('CLAIM ERROR: Special mission could not be completed');
+          return null;
+        }
+
+        await player.setMp(player.mp - mpToDeduct);
+        await player.addStudyTime(mission.durationMinutes);
+        await _clearSession();
+        return earnedXp;
+      }
+
+      final quest = questSystem.getQuestById(questId);
+      if (quest == null || !quest.requiresTimer) {
+        debugPrint('CLAIM ERROR: Quest not found or timer not required');
+        return null;
+      }
+
+      final studyMinutes = quest.durationMinutes;
       final earnedXp = await questSystem.completeQuest(questId, player);
 
       if (earnedXp == null) {
@@ -379,10 +400,7 @@ class StudyTimer extends ChangeNotifier {
 
       await player.setMp(player.mp - mpToDeduct);
       await player.addStudyTime(studyMinutes);
-
-      // Clear WITHOUT applying cancel damage (successful claim).
       await _clearSession();
-
       return earnedXp;
     } catch (error, stackTrace) {
       debugPrint('CLAIM EXCEPTION: $error');
