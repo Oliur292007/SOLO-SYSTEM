@@ -328,6 +328,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   int _trackedTotalXp = 0;
   String _trackedRank = '';
   String _trackedTitle = '';
+  Timer? _notificationPollTimer;
 
   @override
   void initState() {
@@ -345,6 +346,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.timetableSystem.removeListener(_onLocalProgressChanged);
     widget.timetableSystem.removeListener(_syncMissionNotifications);
     widget.restSystem.removeListener(_onLocalProgressChanged);
+    _notificationPollTimer?.cancel();
     widget.cloudProgressSync.dispose();
     super.dispose();
   }
@@ -445,6 +447,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(widget.securityController.refreshEmergencyUnlock());
       if (widget.cloudProgressSync.isPaired) _syncCloudAndRefresh();
+      unawaited(_syncMissionNotificationsSafely());
     } else if (state == AppLifecycleState.paused &&
         widget.cloudProgressSync.isPaired) {
       unawaited(widget.cloudProgressSync.syncNow());
@@ -493,8 +496,13 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.questSystem.addListener(_onLocalProgressChanged);
     widget.studyTimer.addListener(_onLocalProgressChanged);
     widget.timetableSystem.addListener(_onLocalProgressChanged);
-    widget.timetableSystem.addListener(_syncMissionNotifications);
+    widget.timetableSystem.addListener(_onTimetableChanged);
     widget.restSystem.addListener(_onLocalProgressChanged);
+    _notificationPollTimer?.cancel();
+    _notificationPollTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _trackProgressNotifications(),
+    );
     if (widget.cloudProgressSync.isPaired) {
       widget.cloudProgressSync.startAutoSync();
     }
@@ -509,6 +517,10 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
 
   static const MethodChannel _appRestrictionChannel =
       MethodChannel('solo_system/app_restriction');
+
+  void _onTimetableChanged() {
+    unawaited(_syncMissionNotificationsSafely());
+  }
 
   Future<void> _syncMissionNotifications() async {
     await widget.notificationService.syncMissionReminders(
@@ -534,7 +546,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   }
 
   Future<void> _showFirstLaunchSetup() async {
-    const onboardingVersion = 3;
+    const onboardingVersion = 4;
     const onboardingVersionKey = 'first_launch_onboarding_version';
     final prefs = await SharedPreferences.getInstance();
     if ((prefs.getInt(onboardingVersionKey) ?? 0) >= onboardingVersion) {
@@ -639,13 +651,13 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
         builder: (dialogContext) => AlertDialog(
           title: const Text('ENABLE STUDY APP PROTECTION'),
           content: const Text(
-            'IMPORTANT: Android may block this permission until you allow restricted settings. Follow these steps in order:\\n\\n'
-          '1. Tap OPEN SETTINGS below. This first visit to Accessibility Settings is required; you may not be able to turn protection on yet.\\n\\n'
-          '2. Return to your Home Screen. Press and hold the SOLO SYSTEM app icon, then tap App info.\\n\\n'
-          '3. Tap the three-dot menu (⋮) in the top-right corner. Choose Allow restricted settings, then confirm Allow. If this option is missing, complete step 1 first.\\n\\n'
-          '4. Open SOLO SYSTEM again. Go to Security > Manage Study App Protection.\\n\\n'
-          '5. In Accessibility Settings, open SOLO SYSTEM and turn on its service. Read the Android warning and confirm only if you agree.\\n\\n'
-          'This lets SOLO SYSTEM return you to the Home Screen when you try to open other apps during an active mission timer. You can disable it again in Android Accessibility Settings.',
+            'Study App Protection needs your approval in Android. Follow these steps in order:\n\n'
+            'STEP 1 — Open Accessibility Settings using the button below. Find SOLO SYSTEM. If Android does not allow you to switch it on yet, return to the Home Screen.\n\n'
+            'STEP 2 — Find the SOLO SYSTEM icon on your Home Screen. Press and hold it, then choose App info.\n\n'
+            'STEP 3 — In App info, tap the three-dot menu in the top-right corner. Choose Allow restricted settings and confirm. If you cannot see this option, make sure you completed Step 1 first.\n\n'
+            'STEP 4 — Open SOLO SYSTEM again. Go to Security and choose Set Up Study App Protection.\n\n'
+            'STEP 5 — Open SOLO SYSTEM in Accessibility Settings and switch on its service. Read the Android permission warning carefully, then confirm if you agree.\n\n'
+            'HOW IT WORKS: While a mission timer is running, SOLO SYSTEM can send you back to the Home Screen if you try to open another app. This does not uninstall or permanently lock other apps. You can turn the Accessibility service off at any time in Android Settings.',
           ),
         actions: [
           TextButton(
@@ -900,7 +912,6 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             appVersionLabel: widget.appVersionLabel,
             notificationService: widget.notificationService,
           ),
-          SystemMessagePage(message: widget.questSystem.dailySystemMessage),
         ];
 
         return Scaffold(
@@ -941,11 +952,6 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
                 icon: Icon(Icons.settings_outlined, color: c.muted),
                 selectedIcon: Icon(Icons.settings, color: c.cyan),
                 label: 'Settings',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.auto_awesome_outlined, color: c.muted),
-                selectedIcon: Icon(Icons.auto_awesome, color: c.cyan),
-                label: 'System Message',
               ),
             ],
           ),
@@ -1700,6 +1706,41 @@ class DashboardPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 22),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: c.panel,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: c.cyan.withValues(alpha: 0.35)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome, color: c.cyan, size: 18),
+                  const SizedBox(width: 9),
+                  Text(
+                    'DAILY SYSTEM MESSAGE',
+                    style: TextStyle(
+                      color: c.cyan,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                questSystem.dailySystemMessage.isEmpty
+                    ? 'Complete your Wakeup Mission to receive today\'s System Message.'
+                    : questSystem.dailySystemMessage,
+                style: TextStyle(color: c.text, fontSize: 13, height: 1.55),
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: 20),
         Center(
           child: Text(
