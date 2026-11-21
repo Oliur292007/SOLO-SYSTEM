@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 import 'player_system.dart';
 import 'quest_system.dart';
@@ -23,6 +24,22 @@ class StudyTimer extends ChangeNotifier {
 
   /// Hard cap per cancel (fraction of maxHp).
   static const double _cancelDamageCapFraction = 0.40;
+
+  static const MethodChannel _restrictionChannel =
+      MethodChannel('solo_system/app_restriction');
+
+  Future<void> _syncNativeRestriction() async {
+    try {
+      await _restrictionChannel.invokeMethod<void>(
+        'setStudyRestriction',
+        {'active': isRunning},
+      );
+    } on PlatformException catch (error) {
+      debugPrint('APP RESTRICTION SYNC ERROR: ${error.message}');
+    } catch (error) {
+      debugPrint('APP RESTRICTION SYNC ERROR: $error');
+    }
+  }
 
   Timer? _ticker;
 
@@ -124,6 +141,7 @@ class StudyTimer extends ChangeNotifier {
     }
 
     isLoaded = true;
+    await _syncNativeRestriction();
     notifyListeners();
   }
 
@@ -161,6 +179,7 @@ class StudyTimer extends ChangeNotifier {
     isFinished = false;
 
     await _saveTimer();
+    await _syncNativeRestriction();
 
     if (questSystem != null) {
       await questSystem.registerTimerStart(questId, now);
@@ -191,6 +210,7 @@ class StudyTimer extends ChangeNotifier {
     }
 
     await _saveTimer();
+    await _syncNativeRestriction();
     notifyListeners();
   }
 
@@ -210,6 +230,7 @@ class StudyTimer extends ChangeNotifier {
     isRunning = true;
 
     await _saveTimer();
+    await _syncNativeRestriction();
     _startTicker();
     notifyListeners();
   }
@@ -271,6 +292,7 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_reservedMpKey);
     await prefs.remove(_startedAtKey);
 
+    await _syncNativeRestriction();
     notifyListeners();
     return hpDamageApplied;
   }
@@ -295,6 +317,7 @@ class StudyTimer extends ChangeNotifier {
           _ticker?.cancel();
           _ticker = null;
           await _saveTimer();
+          await _syncNativeRestriction();
         }
 
         notifyListeners();
@@ -395,6 +418,7 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_reservedMpKey);
     await prefs.remove(_startedAtKey);
 
+    await _syncNativeRestriction();
     notifyListeners();
   }
 
