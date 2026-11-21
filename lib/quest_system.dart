@@ -503,7 +503,17 @@ class QuestSystem extends ChangeNotifier {
     final quest = getQuestById(questId);
     if (quest == null) return null;
     if (isCompleted(questId)) return null;
+    if (isMissed(questId) || isSkipped(questId)) return null;
     if (!quest.isAvailable) return null;
+
+    // Fixed daily missions must be completed within their configured window.
+    // Sleeping: 8:00 PM–11:58 PM. Wakeup: 5:00 AM–8:30 AM.
+    final now = DateTime.now();
+    if (quest.deadline != null && now.isAfter(quest.deadline!)) {
+      debugPrint('FIXED MISSION BLOCKED: deadline passed for $questId.');
+      return null;
+    }
+
     if (player.isCriticalHp) return null;
 
     return _completeMission(quest, player);
@@ -748,7 +758,10 @@ class QuestSystem extends ChangeNotifier {
 
         if (completedQuestIds.contains(id)) continue;
         if (isOptional) continue;
-        if (timerStarted) continue;
+
+        // A timer started before the deadline may finish late on the same day,
+        // but an unfinished quest must still be marked missed after date rollover.
+        // Do not let a stale timer-start flag exempt it from previous-day penalties.
 
         if (id == 'sleeping') {
           isNightLockActive = true;
