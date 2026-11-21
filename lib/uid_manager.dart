@@ -18,25 +18,20 @@ class UidManager {
   bool get hasUid => _uid != null && _uid!.isNotEmpty;
   int get registrationAttempts => _registrationAttempts;
 
-  /// Load or generate UID on app startup.
-  /// Returns true if a new UID was generated.
   Future<bool> initialize() async {
     final prefs = await SharedPreferences.getInstance();
-
     _uid = prefs.getString(_uidKey);
     _deviceId = prefs.getString(_deviceIdKey);
     _isRegistered = prefs.getBool(_registeredKey) ?? false;
     _registrationAttempts = prefs.getInt(_registrationAttemptsKey) ?? 0;
 
-    bool isNew = false;
-
+    var isNew = false;
     if (_uid == null || _uid!.isEmpty) {
       _uid = _generateUid();
       _deviceId = _generateDeviceId();
       _isRegistered = false;
       _registrationAttempts = 0;
       isNew = true;
-
       await prefs.setString(_uidKey, _uid!);
       await prefs.setString(_deviceIdKey, _deviceId!);
       await prefs.setBool(_registeredKey, false);
@@ -45,58 +40,21 @@ class UidManager {
       _deviceId = _generateDeviceId();
       await prefs.setString(_deviceIdKey, _deviceId!);
     }
-
     return isNew;
   }
 
-  /// Format: SOLO-XXXX-XXXX-XXXX
   String _generateUid() {
     const uuid = Uuid();
     final raw = uuid.v4().replaceAll('-', '').toUpperCase();
-    return 'SOLO-${raw.substring(0, 4)}-'
-        '${raw.substring(4, 8)}-'
-        '${raw.substring(8, 12)}';
+    return 'SOLO-${raw.substring(0, 4)}-${raw.substring(4, 8)}-${raw.substring(8, 12)}';
   }
 
-  String _generateDeviceId() {
-    const uuid = Uuid();
-    return uuid.v4();
-  }
+  String _generateDeviceId() => const Uuid().v4();
 
-
-  /// Replace a fresh-install UID with the UID verified through Telegram.
+  /// Use only after Telegram Bot verified this UID and issued a pairing token.
   Future<void> restoreRegisteredUid(String recoveredUid) async {
     final normalized = recoveredUid.trim().toUpperCase();
-    if (!RegExp(r'^SOLO-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}
-    _isRegistered = true;
-    _registrationAttempts = 0;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_registeredKey, true);
-    await prefs.setInt(_registrationAttemptsKey, 0);
-  }
-
-  Future<void> incrementRegistrationAttempts() async {
-    _registrationAttempts++;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_registrationAttemptsKey, _registrationAttempts);
-  }
-
-  /// Dev-only: clear UID (for testing). Do not expose in UI.
-  Future<void> clearAll() async {
-    _uid = null;
-    _deviceId = null;
-    _isRegistered = false;
-    _registrationAttempts = 0;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_uidKey);
-    await prefs.remove(_deviceIdKey);
-    await prefs.remove(_registeredKey);
-    await prefs.remove(_registrationAttemptsKey);
-  }
-})
+    if (!RegExp(r'^SOLO-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$')
         .hasMatch(normalized)) {
       throw ArgumentError('Invalid SOLO UID format.');
     }
@@ -116,7 +74,6 @@ class UidManager {
   Future<void> markRegistered() async {
     _isRegistered = true;
     _registrationAttempts = 0;
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_registeredKey, true);
     await prefs.setInt(_registrationAttemptsKey, 0);
@@ -124,7 +81,6 @@ class UidManager {
 
   Future<void> incrementRegistrationAttempts() async {
     _registrationAttempts++;
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_registrationAttemptsKey, _registrationAttempts);
   }
@@ -135,7 +91,6 @@ class UidManager {
     _deviceId = null;
     _isRegistered = false;
     _registrationAttempts = 0;
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_uidKey);
     await prefs.remove(_deviceIdKey);
