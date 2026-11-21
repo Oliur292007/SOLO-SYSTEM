@@ -62,7 +62,7 @@ enum QuestState {
 
 int _extractDurationMinutes(String description) {
   final match = RegExp(
-    r'(\\d+)\\s*(?:-\\s*)?(?:focused\\s+)?minutes?',
+    r'(\d+)\s*(?:-\s*)?(?:focused\s+)?minutes?',
     caseSensitive: false,
   ).firstMatch(description);
   return match == null ? 0 : int.tryParse(match.group(1)!) ?? 0;
