@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -58,6 +59,57 @@ enum QuestState {
   locked,
 }
 
+class WeeklySpecialMission {
+  final String weekKey;
+  final int weekday;
+  final String title;
+  final String description;
+  final String category;
+  final int xpReward;
+  final bool isCompleted;
+
+  const WeeklySpecialMission({
+    required this.weekKey,
+    required this.weekday,
+    required this.title,
+    required this.description,
+    required this.category,
+    required this.xpReward,
+    this.isCompleted = false,
+  });
+
+  WeeklySpecialMission copyWith({bool? isCompleted}) => WeeklySpecialMission(
+        weekKey: weekKey,
+        weekday: weekday,
+        title: title,
+        description: description,
+        category: category,
+        xpReward: xpReward,
+        isCompleted: isCompleted ?? this.isCompleted,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'weekKey': weekKey,
+        'weekday': weekday,
+        'title': title,
+        'description': description,
+        'category': category,
+        'xpReward': xpReward,
+        'isCompleted': isCompleted,
+      };
+
+  factory WeeklySpecialMission.fromJson(Map<String, dynamic> json) =>
+      WeeklySpecialMission(
+        weekKey: json['weekKey'] as String,
+        weekday: json['weekday'] as int,
+        title: json['title'] as String,
+        description: json['description'] as String,
+        category: json['category'] as String,
+        xpReward: json['xpReward'] as int,
+        isCompleted: json['isCompleted'] as bool? ?? false,
+      );
+}
+
 class QuestSystem extends ChangeNotifier {
   static const String _dateKey = 'quest_date';
   static const String _completedKey = 'completed_quests';
@@ -67,6 +119,9 @@ class QuestSystem extends ChangeNotifier {
   static const String _penaltyKey = 'penalty_until';
   static const String _nightLockKey = 'night_lock_active';
   static const String _timerStartsKey = 'quest_timer_starts';
+  static const String _specialWeekKey = 'weekly_special_week';
+  static const String _specialDayKey = 'weekly_special_day';
+  static const String _specialMissionKey = 'weekly_special_mission';
 
   static const Duration penaltyDuration = Duration(hours: 4);
   static const Duration hpCriticalPenalty = Duration(hours: 2);
@@ -92,6 +147,9 @@ class QuestSystem extends ChangeNotifier {
 
   bool isLoaded = false;
   bool isNightLockActive = false;
+
+  int? weeklySpecialDay;
+  WeeklySpecialMission? weeklySpecialMission;
 
   DateTime? penaltyUntil;
 
@@ -450,6 +508,8 @@ class QuestSystem extends ChangeNotifier {
       }
     }
 
+    await _ensureWeeklySpecialMission();
+
     isLoaded = true;
 
     await _cleanupOrphanQuestIds();
@@ -493,6 +553,134 @@ class QuestSystem extends ChangeNotifier {
       await _saveSkipped();
       await _saveTimerStarts();
     }
+  }
+
+  // ============================================================
+  // WEEKLY RANDOM SPECIAL MISSION
+  // ============================================================
+
+  String _weekStartKey([DateTime? reference]) {
+    final date = reference ?? DateTime.now();
+    final monday = DateTime(date.year, date.month, date.day)
+        .subtract(Duration(days: date.weekday - 1));
+    return '${monday.year}-${monday.month.toString().padLeft(2, '0')}-'
+        '${monday.day.toString().padLeft(2, '0')}';
+  }
+
+  String get weeklySpecialDayName =>
+      weeklySpecialDay == null ? '' : TimetableSystem.weekdays[weeklySpecialDay! - 1];
+
+  bool get isWeeklySpecialMissionDay =>
+      weeklySpecialDay == DateTime.now().weekday &&
+      weeklySpecialMission != null;
+
+  Future<void> _ensureWeeklySpecialMission() async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentWeek = _weekStartKey();
+    final savedWeek = prefs.getString(_specialWeekKey);
+
+    if (savedWeek != currentWeek) {
+      // If first initialized mid-week, choose from the remaining days.
+      final firstPossibleDay = savedWeek == null ? DateTime.now().weekday : 1;
+      weeklySpecialDay = firstPossibleDay +
+          Random().nextInt(8 - firstPossibleDay);
+      weeklySpecialMission = null;
+      await prefs.setString(_specialWeekKey, currentWeek);
+      await prefs.setInt(_specialDayKey, weeklySpecialDay!);
+      await prefs.remove(_specialMissionKey);
+    } else {
+      weeklySpecialDay = prefs.getInt(_specialDayKey);
+      final raw = prefs.getString(_specialMissionKey);
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          weeklySpecialMission = WeeklySpecialMission.fromJson(
+            Map<String, dynamic>.from(jsonDecode(raw) as Map),
+          );
+        } catch (_) {
+          weeklySpecialMission = null;
+          await prefs.remove(_specialMissionKey);
+        }
+      }
+    }
+
+    if (weeklySpecialDay == DateTime.now().weekday &&
+        weeklySpecialMission == null) {
+      await _generateWeeklySpecialMission(currentWeek);
+    }
+  }
+
+  Future<void> _generateWeeklySpecialMission(String weekKey) async {
+    final player = restSystem.player;
+    final todaySchedules = timetableSystem.getSchedulesForDay(DateTime.now().weekday);
+    final missedCount = missedQuestIds.length;
+    final completedCount = completedQuestIds.length;
+
+    String title;
+    String description;
+    String category;
+
+    if (missedCount >= 2) {
+      title = 'Discipline Rebuild';
+      description = 'Complete one planned task today without postponing it. '
+          'Stay focused and rebuild your consistency.';
+      category = 'DISCIPLINE';
+    } else if (todaySchedules.isNotEmpty) {
+      final subject = todaySchedules.first.subject;
+      title = 'Mastery Challenge';
+      description = 'Complete an extra focused study session for $subject. '
+          'Go beyond your regular timetable.';
+      category = 'KNOWLEDGE';
+    } else if (player.strength <= player.intellect) {
+      title = 'Shadow Training';
+      description = 'Complete a 20-minute physical activity session and '
+          'push your limits.';
+      category = 'STRENGTH';
+    } else {
+      title = 'Knowledge Trial';
+      description = 'Spend 25 minutes learning something useful and record '
+          'what you learned.';
+      category = 'INTELLECT';
+    }
+
+    // Reward scales with level and recent quest activity.
+    final activityBonus = min(completedCount * 5, 50);
+    final reward = 75 + (player.level * 15) + activityBonus;
+
+    weeklySpecialMission = WeeklySpecialMission(
+      weekKey: weekKey,
+      weekday: weeklySpecialDay!,
+      title: title,
+      description: description,
+      category: category,
+      xpReward: reward,
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _specialMissionKey,
+      jsonEncode(weeklySpecialMission!.toJson()),
+    );
+    notifyListeners();
+  }
+
+  Future<int?> completeWeeklySpecialMission(PlayerSystem player) async {
+    final mission = weeklySpecialMission;
+    if (mission == null ||
+        mission.isCompleted ||
+        mission.weekKey != _weekStartKey() ||
+        mission.weekday != DateTime.now().weekday) {
+      return null;
+    }
+
+    weeklySpecialMission = mission.copyWith(isCompleted: true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _specialMissionKey,
+      jsonEncode(weeklySpecialMission!.toJson()),
+    );
+    await player.addXp(mission.xpReward);
+    notifyListeners();
+    return mission.xpReward;
   }
 
   // ============================================================
@@ -726,6 +914,7 @@ class QuestSystem extends ChangeNotifier {
     _timerStarts.clear();
 
     _loadedDateKey = todayKey;
+    await _ensureWeeklySpecialMission();
 
     await _saveCompleted();
     await _saveMissed();
