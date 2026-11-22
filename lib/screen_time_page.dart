@@ -115,7 +115,7 @@ class _ScreenTimePageState extends State<ScreenTimePage>
     required IconData icon,
   }) {
     final limitMs = limitMinutes * 60000;
-    final progress = limitMs <= 0 ? 0.0 : (usedMs / limitMs).clamp(0.0, 1.0);
+    final progress = limitMs <= 0 ? 0.0 : (usedMs / limitMs).clamp(0.0, 1.0).toDouble();
     final exceeded = usedMs >= limitMs;
     return Container(
       padding: const EdgeInsets.all(16),
