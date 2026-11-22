@@ -1,4 +1,3 @@
-
 name: SOLO SYSTEM Android APK
 
 on:
@@ -26,15 +25,15 @@ jobs:
         with:
           channel: stable
 
-      - name: Generate Android Project
+      # Keep the checked-in Android project. It contains the custom
+      # MainActivity MethodChannel, timezone bridge, permissions and
+      # Accessibility service required by SOLO SYSTEM.
+      - name: Verify Native Android Configuration
         run: |
-          flutter create \
-            --platforms=android \
-            --org com.oliur.solosystem \
-            --project-name solo_system \
-            /tmp/solo_scaffold
-
-          cp -R /tmp/solo_scaffold/android ./android
+          test -f android/app/src/main/kotlin/com/example/solo_system/MainActivity.kt
+          test -f android/app/src/main/kotlin/com/example/solo_system/StudyRestrictionAccessibilityService.kt
+          grep -q 'SCHEDULE_EXACT_ALARM' android/app/src/main/AndroidManifest.xml
+          grep -q 'ScheduledNotificationBootReceiver' android/app/src/main/AndroidManifest.xml
 
       - name: Install Dependencies
         run: flutter pub get
@@ -48,4 +47,3 @@ jobs:
           name: SOLO-SYSTEM-APK
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
-          
