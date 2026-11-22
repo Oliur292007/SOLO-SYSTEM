@@ -183,6 +183,28 @@ void main() {
     expect(player.mp, 100);
   });
 
+  test('long study sessions remain one continuous countdown', () async {
+    final player = PlayerSystem();
+    await player.loadPlayer();
+
+    final timer = StudyTimer();
+    await timer.loadTimer(player: player);
+    final before = DateTime.now().millisecondsSinceEpoch;
+
+    final started = await timer.start(
+      questId: 'long_test_quest',
+      durationMinutes: 60,
+      player: player,
+    );
+
+    expect(started, isTrue);
+    expect(timer.formattedTime, '60:00');
+    expect(timer.endTime! - before, greaterThanOrEqualTo(60 * 60 * 1000));
+    expect(timer.endTime! - before, lessThan(60 * 60 * 1000 + 5000));
+
+    await timer.cancel(player: player);
+  });
+
   test('timer cannot reserve more MP than the player has', () async {
     final player = PlayerSystem();
     await player.loadPlayer();

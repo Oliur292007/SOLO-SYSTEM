@@ -164,9 +164,49 @@ object ScreenTimePolicy {
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
         return runCatching {
-            manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, now)
-                .groupBy { it.packageName }
-                .mapValues { (_, entries) -> entries.sumOf { it.totalTimeInForeground } }
+            val events = manager.queryEvents(start - 24L * 60L * 60L * 1000L, now)
+            val event = android.app.usage.UsageEvents.Event()
+            val activeSince = mutableMapOf<String, Long>()
+            val totals = mutableMapOf<String, Long>()
+
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                val packageName = event.packageName ?: continue
+                when (event.eventType) {
+                    android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED,
+                    android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                        // Keep the first open foreground timestamp until the matching
+                        // background event; duplicate foreground events must not reset it.
+                        if (!activeSince.containsKey(packageName)) {
+                            activeSince[packageName] = event.timeStamp
+                        }
+                    }
+                    android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED,
+                    android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                        val foregroundStart = activeSince.remove(packageName)
+                        if (foregroundStart != null) {
+                            // Clip the session to today's local window. A session that
+                            // ended before midnight contributes exactly zero, never negative.
+                            val clippedStart = maxOf(foregroundStart, start)
+                            val clippedEnd = minOf(event.timeStamp, now)
+                            if (clippedEnd > clippedStart) {
+                                totals[packageName] = (totals[packageName] ?: 0L) +
+                                    (clippedEnd - clippedStart)
+                            }
+                        }
+                    }
+                }
+            }
+
+            activeSince.forEach { (packageName, foregroundStart) ->
+                val clippedStart = maxOf(foregroundStart, start)
+                val clippedEnd = now
+                if (clippedEnd > clippedStart) {
+                    totals[packageName] = (totals[packageName] ?: 0L) +
+                        (clippedEnd - clippedStart)
+                }
+            }
+            totals
         }.getOrDefault(emptyMap())
     }
 
