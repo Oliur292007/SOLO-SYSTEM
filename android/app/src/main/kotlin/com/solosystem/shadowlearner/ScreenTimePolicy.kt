@@ -100,9 +100,10 @@ object ScreenTimePolicy {
         val appInfo = runCatching {
             context.packageManager.getApplicationInfo(packageName, 0)
         }.getOrNull()
-        if (appInfo != null && android.os.Build.VERSION.SDK_INT >= 26 &&
-            appInfo.category == ApplicationInfo.CATEGORY_GAME
-        ) return "game"
+        if (appInfo != null && android.os.Build.VERSION.SDK_INT >= 26) {
+            if (appInfo.category == ApplicationInfo.CATEGORY_GAME) return "game"
+            if (appInfo.category == ApplicationInfo.CATEGORY_SOCIAL) return "social_media"
+        }
 
         if (appInfo != null) {
             val label = runCatching {
