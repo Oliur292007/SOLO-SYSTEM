@@ -95,6 +95,7 @@ object ScreenTimePolicy {
             return "social_media"
         }
         if (isEducationName(lower)) return "education"
+        if (lower in KNOWN_GAME_PACKAGES) return "game"
 
         val appInfo = runCatching {
             context.packageManager.getApplicationInfo(packageName, 0)
@@ -108,7 +109,10 @@ object ScreenTimePolicy {
                 context.packageManager.getApplicationLabel(appInfo).toString().lowercase()
             }.getOrDefault("")
             if (isEducationName(label)) return "education"
-            if (label.contains("game") || label.contains("games")) return "game"
+            if (label.contains("game") || label.contains("games") ||
+                listOf("pubg", "free fire", "minecraft", "roblox", "clash", "subway surfers")
+                    .any { label.contains(it) }
+            ) return "game"
             if (isSocialName(label)) return "social_media"
         }
         return "other"
@@ -137,6 +141,14 @@ object ScreenTimePolicy {
         "com.twitter.android", "com.x.android", "com.snapchat.android",
         "com.reddit.frontpage", "com.pinterest", "com.linkedin.android",
         "org.telegram.messenger", "com.whatsapp", "com.discord"
+    )
+
+    private val KNOWN_GAME_PACKAGES = setOf(
+        "com.dts.freefireth", "com.dts.freefiremax", "com.tencent.ig",
+        "com.pubg.imobile", "com.mojang.minecraftpe", "com.roblox.client",
+        "com.supercell.clashofclans", "com.supercell.clashroyale",
+        "com.kiloo.subwaysurf", "com.king.candycrushsaga",
+        "com.mobile.legends"
     )
 
     fun usageByPackage(context: Context): Map<String, Long> {
