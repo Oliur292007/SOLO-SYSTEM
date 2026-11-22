@@ -986,7 +986,24 @@ class QuestSystem extends ChangeNotifier {
         }
 
         // Wakeup miss: end long rest, clear night lock, HP damage + penalty.
-wakeup order
+        if (quest.id == 'wakeup') {
+          await restSystem.endLongRest(endedAt: quest.deadline!);
+          isNightLockActive = false;
+          await _saveNightLock();
+          await _startPenalty(quest.deadline!);
+
+          await _applyMissDamage(
+            player,
+            _wakeupMissPercent,
+            'Wakeup Missed',
+            eventId: 'miss:wakeup:${quest.deadline!.millisecondsSinceEpoch}',
+          );
+          _maybeApplyHpCriticalPenalty(player);
+
+          missedQuestIds.add(quest.id);
+          await _saveMissed();
+          continue;
+        }
 
         // Other mandatory timer missions.
         await _startPenalty(quest.deadline!);
