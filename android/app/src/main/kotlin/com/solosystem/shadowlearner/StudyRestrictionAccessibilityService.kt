@@ -1,37 +1,62 @@
 package com.solosystem.shadowlearner
 
 import android.accessibilityservice.AccessibilityService
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
 import android.view.accessibility.AccessibilityEvent
 
 /**
- * Foreground app guard for active Shadow Learner study sessions.
- * Android does not expose a supported API for force-stopping other apps;
- * this service returns the user to Home when a non-exempt app opens.
+ * Shared foreground guard for daily Screen Time limits and active study sessions.
+ * Screen Time limits apply all day; Study Protection applies only while a quest
+ * focus session is active. YouTube and approved education apps are study-safe.
  */
 class StudyRestrictionAccessibilityService : AccessibilityService() {
     companion object {
         const val PREFS = "solo_system_study_restriction"
         const val KEY_ACTIVE = "study_restriction_active"
+        private const val WARNING_CHANNEL_ID = "solo_youtube_study_warnings"
+        private const val WARNING_NOTIFICATION_ID = 54001
     }
 
+    private val handler = Handler(Looper.getMainLooper())
     private var lastRedirectAt = 0L
     private var lastBlockedPackage: String? = null
+    private var currentForegroundPackage: String? = null
+    private var youtubeWarningRunnable: Runnable? = null
+
+    private val screenTimeCheck = object : Runnable {
+        override fun run() {
+            val packageName = currentForegroundPackage
+            if (packageName != null && isScreenInteractive() &&
+                !isSystemAllowedPackage(packageName) &&
+                ScreenTimePolicy.isLimitReached(this@StudyRestrictionAccessibilityService, packageName)
+            ) {
+                redirectHome(packageName)
+            }
+            handler.postDelayed(this, 10_000L)
+        }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-
-        // Apply the event configuration at runtime as well as in XML. This
-        // helps OEM Android builds that do not consistently apply XML options.
         serviceInfo = serviceInfo.apply {
             eventTypes =
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
                     AccessibilityEvent.TYPE_WINDOWS_CHANGED
             notificationTimeout = 80L
         }
-
         lastRedirectAt = 0L
         lastBlockedPackage = null
+        handler.removeCallbacks(screenTimeCheck)
+        handler.postDelayed(screenTimeCheck, 10_000L)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -40,34 +65,48 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
         ) return
 
-        val restrictionActive = getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getBoolean(KEY_ACTIVE, false)
-        if (!restrictionActive) return
-
-        /*
-         * On some Android/OEM builds, the event's packageName can describe
-         * System UI or an overlay instead of the app actually in the foreground.
-         * Prefer the active window's package so an allowed System UI event cannot
-         * accidentally bypass blocking of Chrome or another restricted app.
-         */
         val foregroundPackage = rootInActiveWindow?.packageName?.toString()
             ?.takeIf { it.isNotBlank() }
         val openedPackage = foregroundPackage
             ?: event.packageName?.toString()?.takeIf { it.isNotBlank() }
             ?: return
 
-        if (isAllowedPackage(openedPackage)) return
+        currentForegroundPackage = openedPackage
+        val studyProtectionActive = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getBoolean(KEY_ACTIVE, false)
 
+        if (openedPackage == "com.google.android.youtube" && studyProtectionActive) {
+            startYouTubeWarnings()
+        } else {
+            stopYouTubeWarnings()
+        }
+
+        if (isSystemAllowedPackage(openedPackage)) return
+
+        // Daily category limits apply even when Study Protection is inactive.
+        if (ScreenTimePolicy.isLimitReached(this, openedPackage)) {
+            redirectHome(openedPackage)
+            return
+        }
+
+        // During focus sessions, only the app's approved whitelist is accessible.
+        if (studyProtectionActive &&
+            !ScreenTimePolicy.isStudyAllowed(this, openedPackage)
+        ) {
+            redirectHome(openedPackage)
+        }
+    }
+
+    private fun redirectHome(packageName: String) {
         val now = System.currentTimeMillis()
-        if (openedPackage == lastBlockedPackage && now - lastRedirectAt < 900L) return
+        if (packageName == lastBlockedPackage && now - lastRedirectAt < 900L) return
         if (now - lastRedirectAt < 450L) return
 
-        lastBlockedPackage = openedPackage
+        lastBlockedPackage = packageName
         lastRedirectAt = now
 
         val movedHome = performGlobalAction(GLOBAL_ACTION_HOME)
         if (!movedHome) {
-            // Fallback for OEM builds where GLOBAL_ACTION_HOME returns false.
             runCatching {
                 startActivity(
                     Intent(Intent.ACTION_MAIN).apply {
@@ -79,7 +118,77 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun isAllowedPackage(packageName: String): Boolean {
+    private fun startYouTubeWarnings() {
+        if (youtubeWarningRunnable != null) return
+        val intervalMs = ScreenTimePolicy.youtubeWarningMinutes(this) * 60_000L
+        val runnable = object : Runnable {
+            override fun run() {
+                val active = getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .getBoolean(KEY_ACTIVE, false)
+                if (!active || currentForegroundPackage != "com.google.android.youtube") {
+                    stopYouTubeWarnings()
+                    return
+                }
+                showYouTubeWarning()
+                handler.postDelayed(this, intervalMs)
+            }
+        }
+        youtubeWarningRunnable = runnable
+        handler.postDelayed(runnable, intervalMs)
+    }
+
+    private fun stopYouTubeWarnings() {
+        youtubeWarningRunnable?.let(handler::removeCallbacks)
+        youtubeWarningRunnable = null
+    }
+
+    private fun showYouTubeWarning() {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                WARNING_CHANNEL_ID,
+                "YouTube Study Warnings",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Periodic reminders while YouTube is open during Study Protection."
+            }
+            manager.createNotificationChannel(channel)
+        }
+
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val pendingIntent = launchIntent?.let {
+            PendingIntent.getActivity(
+                this,
+                WARNING_NOTIFICATION_ID,
+                it,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, WARNING_CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }.setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("STUDY PROTECTION REMINDER")
+            .setContentText("YouTube is unlocked, but your study session is still active. Return to your mission.")
+            .setStyle(
+                Notification.BigTextStyle().bigText(
+                    "YouTube remains accessible as requested. This is your periodic 5-minute reminder to return to your study mission."
+                )
+            )
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+        runCatching { manager.notify(WARNING_NOTIFICATION_ID, notification) }
+    }
+
+    private fun isScreenInteractive(): Boolean {
+        val power = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return power.isInteractive
+    }
+
+    private fun isSystemAllowedPackage(packageName: String): Boolean {
         if (packageName == this.packageName) return true
         val p = packageName.lowercase()
         return p.contains("launcher") ||
@@ -95,5 +204,14 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             p.contains("clock")
     }
 
-    override fun onInterrupt() {}
+    override fun onInterrupt() {
+        stopYouTubeWarnings()
+        handler.removeCallbacks(screenTimeCheck)
+    }
+
+    override fun onDestroy() {
+        stopYouTubeWarnings()
+        handler.removeCallbacksAndMessages(null)
+        super.onDestroy()
+    }
 }
