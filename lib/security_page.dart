@@ -408,7 +408,7 @@ class _SecurityPageState extends State<SecurityPage> {
             iconColor: c.cyan,
             title: 'Generate Unlock / Uninstall Code',
             subtitle: isRegistered
-                ? 'Request codes from Help Center'
+                ? 'Request codes through the Telegram companion bot'
                 : 'Requires registration',
             enabled: isRegistered && !widget.controller.isGeneratingCode,
             onTap: _handleRequestCodes,
