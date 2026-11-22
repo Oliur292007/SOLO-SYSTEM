@@ -26,7 +26,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         serviceInfo = serviceInfo.apply {
             eventTypes =
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                AccessibilityEvent.TYPE_WINDOWS_CHANGED
+                    AccessibilityEvent.TYPE_WINDOWS_CHANGED
             notificationTimeout = 80L
         }
 
@@ -37,15 +37,23 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return
+            event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) return
 
         val restrictionActive = getSharedPreferences(PREFS, MODE_PRIVATE)
             .getBoolean(KEY_ACTIVE, false)
         if (!restrictionActive) return
 
-        // Some launchers/OEMs send a window event without packageName.
-        val openedPackage = event.packageName?.toString()
-            ?: rootInActiveWindow?.packageName?.toString()
+        /*
+         * On some Android/OEM builds, the event's packageName can describe
+         * System UI or an overlay instead of the app actually in the foreground.
+         * Prefer the active window's package so an allowed System UI event cannot
+         * accidentally bypass blocking of Chrome or another restricted app.
+         */
+        val foregroundPackage = rootInActiveWindow?.packageName?.toString()
+            ?.takeIf { it.isNotBlank() }
+        val openedPackage = foregroundPackage
+            ?: event.packageName?.toString()?.takeIf { it.isNotBlank() }
             ?: return
 
         if (isAllowedPackage(openedPackage)) return
