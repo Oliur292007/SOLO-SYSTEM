@@ -18,8 +18,6 @@ import 'cloud_progress_sync.dart';
 import 'supabase_service.dart';
 import 'security_controller.dart';
 import 'security_page.dart';
-import 'pomodoro_system.dart';
-import 'pomodoro_page.dart';
 import 'app_update_service.dart';
 
 Future<void> main() async {
@@ -34,10 +32,6 @@ Future<void> main() async {
   );
   final studyTimer = StudyTimer();
   final notificationService = MissionNotificationService();
-  final pomodoro = PomodoroSystem(
-    player: player,
-    notifications: notificationService,
-  );
   final appUpdateService = AppUpdateService();
 
   // Local identity and progress preferences are essential for the first frame.
@@ -76,7 +70,6 @@ Future<void> main() async {
       supabaseService: supabaseService,
       securityController: securityController,
       cloudProgressSync: cloudProgressSync,
-      pomodoro: pomodoro,
       appUpdateService: appUpdateService,
     ),
   );
@@ -183,7 +176,6 @@ class ShadowLearnerApp extends StatefulWidget {
   final SupabaseService supabaseService;
   final SecurityController securityController;
   final CloudProgressSync cloudProgressSync;
-  final PomodoroSystem pomodoro;
   final AppUpdateService appUpdateService;
 
   const ShadowLearnerApp({
@@ -198,7 +190,6 @@ class ShadowLearnerApp extends StatefulWidget {
     required this.supabaseService,
     required this.securityController,
     required this.cloudProgressSync,
-    required this.pomodoro,
     required this.appUpdateService,
   });
 
@@ -286,7 +277,6 @@ class _ShadowLearnerAppState extends State<ShadowLearnerApp> {
         supabaseService: widget.supabaseService,
         securityController: widget.securityController,
         cloudProgressSync: widget.cloudProgressSync,
-        pomodoro: widget.pomodoro,
         appUpdateService: widget.appUpdateService,
         appVersionLabel: appVersionLabel,
       ),
@@ -307,7 +297,6 @@ class SystemHome extends StatefulWidget {
   final SupabaseService supabaseService;
   final SecurityController securityController;
   final CloudProgressSync cloudProgressSync;
-  final PomodoroSystem pomodoro;
   final AppUpdateService appUpdateService;
   final String appVersionLabel;
 
@@ -325,7 +314,6 @@ class SystemHome extends StatefulWidget {
     required this.supabaseService,
     required this.securityController,
     required this.cloudProgressSync,
-    required this.pomodoro,
     required this.appUpdateService,
     required this.appVersionLabel,
   });
@@ -360,10 +348,8 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.timetableSystem.removeListener(_onLocalProgressChanged);
     widget.timetableSystem.removeListener(_onTimetableChanged);
     widget.restSystem.removeListener(_onLocalProgressChanged);
-    widget.pomodoro.removeListener(_onLocalProgressChanged);
     _notificationPollTimer?.cancel();
     widget.cloudProgressSync.dispose();
-    widget.pomodoro.dispose();
     super.dispose();
   }
 
@@ -589,8 +575,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     await widget.restSystem.loadRest();
     await widget.timetableSystem.loadTimetable();
     await widget.questSystem.loadQuests();
-    await widget.studyTimer.loadTimer();
-    await widget.pomodoro.load();
+    await widget.studyTimer.loadTimer(player: widget.player);
     widget.player.attachUid(widget.uidManager.uid, widget.uidManager.isRegistered);
   }
 
@@ -619,8 +604,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     await widget.restSystem.loadRest();
     await widget.timetableSystem.loadTimetable();
     await widget.questSystem.loadQuests();
-    await widget.studyTimer.loadTimer();
-    await widget.pomodoro.load();
+    await widget.studyTimer.loadTimer(player: widget.player);
 
     // Re-attach UID (player.loadPlayer may reset it from prefs)
     widget.player.attachUid(
@@ -652,7 +636,6 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.timetableSystem.addListener(_onLocalProgressChanged);
     widget.timetableSystem.addListener(_onTimetableChanged);
     widget.restSystem.addListener(_onLocalProgressChanged);
-    widget.pomodoro.addListener(_onLocalProgressChanged);
     _notificationPollTimer?.cancel();
     _notificationPollTimer = Timer.periodic(
       const Duration(seconds: 2),
@@ -1055,7 +1038,6 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             studyTimer: widget.studyTimer,
             restSystem: widget.restSystem,
           ),
-          PomodoroPage(pomodoro: widget.pomodoro),
           StatusPage(
             player: widget.player,
             uidManager: widget.uidManager,
@@ -1100,11 +1082,6 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
                 icon: Icon(Icons.assignment_outlined, color: c.muted),
                 selectedIcon: Icon(Icons.assignment, color: c.cyan),
                 label: 'Quests',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.timer_outlined, color: c.muted),
-                selectedIcon: Icon(Icons.timer, color: c.cyan),
-                label: 'Focus',
               ),
               NavigationDestination(
                 icon: Icon(Icons.person_outline, color: c.muted),
