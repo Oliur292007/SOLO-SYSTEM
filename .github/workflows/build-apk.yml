@@ -30,6 +30,20 @@ jobs:
           grep -q 'package com.solosystem.shadowlearner' android/app/src/main/kotlin/com/solosystem/shadowlearner/MainActivity.kt
           grep -q 'SCHEDULE_EXACT_ALARM' android/app/src/main/AndroidManifest.xml
           grep -q 'ScheduledNotificationBootReceiver' android/app/src/main/AndroidManifest.xml
+      - name: Prepare Stable Release Signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64" || (echo "Missing ANDROID_KEYSTORE_BASE64 repository secret." && exit 1)
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || (echo "Missing ANDROID_KEYSTORE_PASSWORD repository secret." && exit 1)
+          test -n "$ANDROID_KEY_ALIAS" || (echo "Missing ANDROID_KEY_ALIAS repository secret." && exit 1)
+          test -n "$ANDROID_KEY_PASSWORD" || (echo "Missing ANDROID_KEY_PASSWORD repository secret." && exit 1)
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          test -s android/app/upload-keystore.jks
+          echo "ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/app/upload-keystore.jks" >> "$GITHUB_ENV"
       - name: Install Dependencies
         run: flutter pub get
       - name: Download Shadow Learner Logo from Google Drive
