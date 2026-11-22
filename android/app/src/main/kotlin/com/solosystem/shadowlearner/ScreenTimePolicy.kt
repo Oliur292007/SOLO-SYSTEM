@@ -151,7 +151,8 @@ object ScreenTimePolicy {
         }.timeInMillis
         return runCatching {
             manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, now)
-                .associate { it.packageName to it.totalTimeInForeground }
+                .groupBy { it.packageName }
+                .mapValues { (_, entries) -> entries.sumOf { it.totalTimeInForeground } }
         }.getOrDefault(emptyMap())
     }
 
@@ -187,14 +188,21 @@ object ScreenTimePolicy {
         )
     }
 
-    fun isLimitReached(context: Context, packageName: String): Boolean {
-        val category = categoryFor(context, packageName)
-        val limitMinutes = when (category) {
+    fun limitReachedForUsage(
+        context: Context,
+        packageName: String,
+        usedMs: Long
+    ): Boolean {
+        val limitMinutes = when (categoryFor(context, packageName)) {
             "social_media" -> socialLimitMinutes(context)
             "game" -> gameLimitMinutes(context)
             else -> return false
         }
-        val usedMs = usageByPackage(context)[packageName] ?: 0L
         return usedMs >= limitMinutes * 60_000L
+    }
+
+    fun isLimitReached(context: Context, packageName: String): Boolean {
+        val usedMs = usageByPackage(context)[packageName] ?: 0L
+        return limitReachedForUsage(context, packageName, usedMs)
     }
 }
