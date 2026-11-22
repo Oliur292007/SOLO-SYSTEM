@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -43,6 +45,7 @@ class PlayerSystem extends ChangeNotifier {
   // ATTRIBUTE KEYS
   static const String _hpKey = 'player_hp';
   static const String _mpKey = 'player_mp';
+  static const String _vitalsStateKey = 'player_vitals_state';
   static const String _strengthKey = 'player_strength';
   static const String _intellectKey = 'player_intellect';
 
@@ -76,6 +79,7 @@ class PlayerSystem extends ChangeNotifier {
 
   /// Recent HP damage events (newest last).
   final List<HpDamageEvent> hpDamageHistory = [];
+  final Set<String> _appliedVitalEvents = <String>{};
 
   String _studyDate = '';
 
@@ -203,6 +207,28 @@ class PlayerSystem extends ChangeNotifier {
 
     hp = prefs.getInt(_hpKey) ?? 100;
     mp = prefs.getInt(_mpKey) ?? 100;
+
+    // The combined snapshot is the source of truth for HP/MP and one-time
+    // recovery/deduction events. Legacy scalar keys remain mirrored for
+    // compatibility with existing releases and cloud snapshots.
+    _appliedVitalEvents.clear();
+    final vitalsRaw = prefs.getString(_vitalsStateKey);
+    if (vitalsRaw != null && vitalsRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(vitalsRaw);
+        if (decoded is Map<String, dynamic>) {
+          hp = decoded['hp'] is int ? decoded['hp'] as int : hp;
+          mp = decoded['mp'] is int ? decoded['mp'] as int : mp;
+          final events = decoded['applied_events'];
+          if (events is List) {
+            _appliedVitalEvents.addAll(events.whereType<String>());
+          }
+        }
+      } catch (_) {
+        // Fall back to the legacy HP/MP values if the snapshot is invalid.
+        _appliedVitalEvents.clear();
+      }
+    }
     strength = prefs.getInt(_strengthKey) ?? 0;
     intellect = prefs.getInt(_intellectKey) ?? 0;
 
@@ -344,6 +370,70 @@ class PlayerSystem extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Applies an HP/MP change exactly once, even if the app is terminated
+  /// between the resource update and the caller's own progress checkpoint.
+  /// The combined snapshot is written before legacy mirror keys.
+  Future<bool> applyVitalChangeOnce(
+    String eventId, {
+    int hpDelta = 0,
+    int mpDelta = 0,
+  }) async {
+    final id = eventId.trim();
+    if (id.isEmpty || _appliedVitalEvents.contains(id)) return false;
+    if (hpDelta == 0 && mpDelta == 0) return false;
+
+    final oldHp = hp;
+    final oldMp = mp;
+    hp = (hp + hpDelta).clamp(0, maxHp);
+    mp = (mp + mpDelta).clamp(0, maxMp);
+    _appliedVitalEvents.add(id);
+
+    // Bound storage while retaining enough recent event IDs for recovery
+    // checkpoints and interrupted quest claims.
+    while (_appliedVitalEvents.length > 300) {
+      _appliedVitalEvents.remove(_appliedVitalEvents.first);
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final saved = await prefs.setString(
+      _vitalsStateKey,
+      jsonEncode({
+        'hp': hp,
+        'mp': mp,
+        'applied_events': _appliedVitalEvents.toList(),
+      }),
+    );
+    if (!saved) {
+      hp = oldHp;
+      mp = oldMp;
+      _appliedVitalEvents.remove(id);
+      throw StateError('Could not persist HP/MP transaction.');
+    }
+
+    await prefs.setInt(_hpKey, hp);
+    await prefs.setInt(_mpKey, mp);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> recoverVitalsOnce(
+    String eventId, {
+    required int hpAmount,
+    required int mpAmount,
+  }) {
+    return applyVitalChangeOnce(
+      eventId,
+      hpDelta: hpAmount < 0 ? 0 : hpAmount,
+      mpDelta: mpAmount < 0 ? 0 : mpAmount,
+    );
+  }
+
+  Future<bool> deductMpOnce(String eventId, int amount) {
+    if (amount <= 0) return Future.value(false);
+    return applyVitalChangeOnce(eventId, mpDelta: -amount);
+  }
+
+
   // ============================================================
   // HP DAMAGE
   // ============================================================
@@ -376,6 +466,39 @@ class PlayerSystem extends ChangeNotifier {
     await _saveHpDamageHistory();
     notifyListeners();
 
+    return actualDamage;
+  }
+
+  /// Applies HP damage once for a stable mission/session event ID.
+  /// Prevents duplicate penalties if the app is interrupted during cleanup.
+  Future<int> applyHpDamageOnce(
+    String eventId,
+    int damage, {
+    String? reason,
+  }) async {
+    if (damage <= 0 || hp <= 0) return 0;
+    final actualDamage = damage.clamp(0, hp);
+    final applied = await applyVitalChangeOnce(
+      eventId,
+      hpDelta: -actualDamage,
+    );
+    if (!applied) return 0;
+
+    hpDamageHistory.add(
+      HpDamageEvent(
+        reason: reason ?? 'Unknown',
+        damage: actualDamage,
+        timestamp: DateTime.now(),
+      ),
+    );
+    if (hpDamageHistory.length > _maxHistoryEntries) {
+      hpDamageHistory.removeRange(
+        0,
+        hpDamageHistory.length - _maxHistoryEntries,
+      );
+    }
+    await _saveHpDamageHistory();
+    notifyListeners();
     return actualDamage;
   }
 
@@ -419,8 +542,7 @@ class PlayerSystem extends ChangeNotifier {
     await prefs.setInt(_todayStudyKey, todayStudyMinutes);
     await prefs.setString(_studyDateKey, _studyDate);
 
-    await prefs.setInt(_hpKey, hp);
-    await prefs.setInt(_mpKey, mp);
+    await _saveVitals(prefs);
     await prefs.setInt(_strengthKey, strength);
     await prefs.setInt(_intellectKey, intellect);
 
@@ -436,10 +558,22 @@ class PlayerSystem extends ChangeNotifier {
 
   Future<void> _saveAttributes() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_hpKey, hp);
-    await prefs.setInt(_mpKey, mp);
+    await _saveVitals(prefs);
     await prefs.setInt(_strengthKey, strength);
     await prefs.setInt(_intellectKey, intellect);
+  }
+
+  Future<void> _saveVitals(SharedPreferences prefs) async {
+    await prefs.setString(
+      _vitalsStateKey,
+      jsonEncode({
+        'hp': hp,
+        'mp': mp,
+        'applied_events': _appliedVitalEvents.toList(),
+      }),
+    );
+    await prefs.setInt(_hpKey, hp);
+    await prefs.setInt(_mpKey, mp);
   }
 
   Future<void> _saveHpDamageHistory() async {

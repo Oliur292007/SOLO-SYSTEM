@@ -418,7 +418,6 @@ class QuestSystem extends ChangeNotifier {
   static const double _mandatoryMissPercent = 15.0;
   static const double _wakeupMissPercent = 18.0;
   static const double _sleepingMissPercent = 15.0;
-  static const double _cancelDamagePercent = 8.0;
 
   /// Hard cap per miss (fraction of maxHp).
   static const double _damageCapFraction = 0.40;
@@ -426,8 +425,9 @@ class QuestSystem extends ChangeNotifier {
   Future<void> _applyMissDamage(
     PlayerSystem player,
     double basePercent,
-    String reason,
-  ) async {
+    String reason, {
+    required String eventId,
+  }) async {
     if (player.hp <= 0) return;
 
     final levelMultiplier = 1.0 + ((player.level - 1) * 0.05);
@@ -438,7 +438,7 @@ class QuestSystem extends ChangeNotifier {
     );
     final damage = cappedDamage.round();
 
-    await player.applyHpDamage(damage, reason: reason);
+    await player.applyHpDamageOnce(eventId, damage, reason: reason);
   }
 
   // ============================================================
@@ -540,6 +540,7 @@ class QuestSystem extends ChangeNotifier {
 
     await _cleanupOrphanQuestIds();
     await _checkDeadlines();
+    await _maybeApplyHpCriticalPenalty(restSystem.player);
     _startDeadlineChecker();
     _syncPenaltyTicker();
     notifyListeners();
@@ -968,17 +969,18 @@ class QuestSystem extends ChangeNotifier {
         // Sleeping miss: Night Lock + HP damage, no penalty timer.
         if (quest.id == 'sleeping') {
           isNightLockActive = true;
-          missedQuestIds.add(quest.id);
           await _saveNightLock();
-          await _saveMissed();
 
           await _applyMissDamage(
             player,
             _sleepingMissPercent,
             'Sleeping Missed',
+            eventId: 'miss:sleeping:${quest.deadline!.millisecondsSinceEpoch}',
           );
+          await _maybeApplyHpCriticalPenalty(player);
 
-          _maybeApplyHpCriticalPenalty(player);
+          missedQuestIds.add(quest.id);
+          await _saveMissed();
           continue;
         }
 
@@ -988,31 +990,32 @@ class QuestSystem extends ChangeNotifier {
           isNightLockActive = false;
           await _saveNightLock();
           await _startPenalty(quest.deadline!);
-          missedQuestIds.add(quest.id);
-          await _saveMissed();
 
           await _applyMissDamage(
             player,
             _wakeupMissPercent,
             'Wakeup Missed',
+            eventId: 'miss:wakeup:${quest.deadline!.millisecondsSinceEpoch}',
           );
+          await _maybeApplyHpCriticalPenalty(player);
 
-          _maybeApplyHpCriticalPenalty(player);
+          missedQuestIds.add(quest.id);
+          await _saveMissed();
           continue;
         }
 
         // Other mandatory timer missions.
         await _startPenalty(quest.deadline!);
-        missedQuestIds.add(quest.id);
-        await _saveMissed();
-
         await _applyMissDamage(
           player,
           _mandatoryMissPercent,
           'Mission Missed: ${quest.name}',
+          eventId: 'miss:${quest.id}:${quest.deadline!.millisecondsSinceEpoch}',
         );
+        await _maybeApplyHpCriticalPenalty(player);
 
-        _maybeApplyHpCriticalPenalty(player);
+        missedQuestIds.add(quest.id);
+        await _saveMissed();
       }
 
       await _savePenalty();
@@ -1101,8 +1104,9 @@ class QuestSystem extends ChangeNotifier {
             player,
             _sleepingMissPercent,
             'Sleeping Missed (previous day)',
+            eventId: 'miss:sleeping:${deadline.millisecondsSinceEpoch}',
           );
-          _maybeApplyHpCriticalPenalty(player);
+          await _maybeApplyHpCriticalPenalty(player);
           continue;
         }
 
@@ -1114,8 +1118,9 @@ class QuestSystem extends ChangeNotifier {
             player,
             _wakeupMissPercent,
             'Wakeup Missed (previous day)',
+            eventId: 'miss:wakeup:${deadline.millisecondsSinceEpoch}',
           );
-          _maybeApplyHpCriticalPenalty(player);
+          await _maybeApplyHpCriticalPenalty(player);
           continue;
         }
 
@@ -1124,8 +1129,9 @@ class QuestSystem extends ChangeNotifier {
           player,
           _mandatoryMissPercent,
           'Mission Missed (previous day)',
+          eventId: 'miss:$id:${deadline.millisecondsSinceEpoch}',
         );
-        _maybeApplyHpCriticalPenalty(player);
+        await _maybeApplyHpCriticalPenalty(player);
       }
     } catch (_) {
       // Ignore corrupted snapshot.
@@ -1149,13 +1155,13 @@ class QuestSystem extends ChangeNotifier {
     _syncPenaltyTicker();
   }
 
-  void _maybeApplyHpCriticalPenalty(PlayerSystem player) {
+  Future<void> _maybeApplyHpCriticalPenalty(PlayerSystem player) async {
     if (player.isCriticalHp && !_hpCriticalPenaltyApplied) {
       _hpCriticalPenaltyApplied = true;
       final newEnd = DateTime.now().add(hpCriticalPenalty);
       if (penaltyUntil == null || penaltyUntil!.isBefore(newEnd)) {
         penaltyUntil = newEnd;
-        _savePenalty();
+        await _savePenalty();
         _syncPenaltyTicker();
       }
     }
@@ -1254,8 +1260,12 @@ class QuestSystem extends ChangeNotifier {
   }
 
   void _onPlayerChanged() {
-    // HP restored → clear HP-critical flag & ticker sync.
-    if (!restSystem.player.isCriticalHp && _hpCriticalPenaltyApplied) {
+    if (!isLoaded) return;
+    final player = restSystem.player;
+    if (player.isCriticalHp) {
+      // Also covers a process interruption immediately after HP damage.
+      unawaited(_maybeApplyHpCriticalPenalty(player));
+    } else if (_hpCriticalPenaltyApplied) {
       _hpCriticalPenaltyApplied = false;
     }
   }

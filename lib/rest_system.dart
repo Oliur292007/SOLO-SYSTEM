@@ -234,14 +234,20 @@ class RestSystem extends ChangeNotifier {
     final totalHpRecovery = baseHpRecovery + hpBonus;
     final totalMpRecovery = baseMpRecovery + mpBonus;
 
-    // CLEAR ACTIVE REST BEFORE APPLYING RECOVERY.
-    _longRestStart = null;
+    // Apply the idempotent recovery event before clearing the persisted
+    // sleep marker. If the process is killed here, loadRest() retries the same
+    // event ID and then safely clears the marker without awarding twice.
+    if (totalHpRecovery > 0 || totalMpRecovery > 0) {
+      await player.recoverVitalsOnce(
+        'long-rest:${start.millisecondsSinceEpoch}',
+        hpAmount: totalHpRecovery,
+        mpAmount: totalMpRecovery,
+      );
+    }
 
+    _longRestStart = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_longRestStartKey);
-
-    if (totalHpRecovery > 0) await player.recoverHp(totalHpRecovery);
-    if (totalMpRecovery > 0) await player.recoverMp(totalMpRecovery);
 
     _stopTickerIfIdle();
     notifyListeners();
@@ -291,13 +297,18 @@ class RestSystem extends ChangeNotifier {
 
       if (completedIntervals <= _appliedIntervals) return;
 
-      final newIntervals = completedIntervals - _appliedIntervals;
-      final hpRecovery = newIntervals * hpRecoveryPerInterval;
-      final mpRecovery = newIntervals * mpRecoveryPerInterval;
-
-      // Apply recovery FIRST. If it fails, do not advance intervals.
-      await player.recoverHp(hpRecovery);
-      await player.recoverMp(mpRecovery);
+      // Apply each interval with a stable event ID. If Android kills the app
+      // between the vitals write and this rest checkpoint, the same interval
+      // is recognized and cannot award HP/MP twice after restart.
+      for (var interval = _appliedIntervals + 1;
+          interval <= completedIntervals;
+          interval++) {
+        await player.recoverVitalsOnce(
+          'short-rest:${_shortRestStart!.millisecondsSinceEpoch}:$interval',
+          hpAmount: hpRecoveryPerInterval,
+          mpAmount: mpRecoveryPerInterval,
+        );
+      }
 
       _appliedIntervals = completedIntervals;
 

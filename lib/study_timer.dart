@@ -93,15 +93,17 @@ class StudyTimer extends ChangeNotifier {
   // DIFFICULTY & MP COST
   // ============================================================
 
-  String getDifficulty(int durationMinutes) {
-    if (durationMinutes <= 30) return 'Easy';
-    if (durationMinutes <= 60) return 'Normal';
+  /// Difficulty is determined by Player Level, not by timer duration.
+  String getDifficulty(int playerLevel) {
+    if (playerLevel <= 30) return 'Easy';
+    if (playerLevel <= 60) return 'Normal';
     return 'Hard';
   }
 
-  int calculateMpCost(int durationMinutes) {
+  /// MP is charged in 15-minute blocks at the player's current level tier.
+  int calculateMpCost(int durationMinutes, {int playerLevel = 1}) {
     if (durationMinutes <= 0) return 0;
-    final difficulty = getDifficulty(durationMinutes);
+    final difficulty = getDifficulty(playerLevel);
     int rate;
     switch (difficulty) {
       case 'Easy':
@@ -236,7 +238,10 @@ class StudyTimer extends ChangeNotifier {
       return false;
     }
 
-    final mpCost = calculateMpCost(durationMinutes);
+    final mpCost = calculateMpCost(
+      durationMinutes,
+      playerLevel: player.level,
+    );
     if (availableMp(player) < mpCost) return false;
 
     _activePlayer = player;
@@ -362,7 +367,9 @@ class StudyTimer extends ChangeNotifier {
         );
         final damage = cappedDamage.round();
 
-        hpDamageApplied = await player.applyHpDamage(
+        final sessionKey = startedAt!.millisecondsSinceEpoch;
+        hpDamageApplied = await player.applyHpDamageOnce(
+          'cancel:${activeQuestId ?? 'unknown'}:$sessionKey',
           damage,
           reason: 'Session Cancelled',
         );
@@ -464,9 +471,13 @@ class StudyTimer extends ChangeNotifier {
     final earned = (elapsed ~/ interval).clamp(0, maximum);
     final pending = earned - recoveryIntervalsApplied;
     if (pending <= 0) return;
+    final sessionKey = startedAt?.millisecondsSinceEpoch ?? (endTime ?? 0);
+    await player.recoverVitalsOnce(
+      'pomodoro:$activeQuestId:$sessionKey:$pomodoroPhase:$completedFocusSessions:$earned',
+      hpAmount: pending,
+      mpAmount: pending,
+    );
     recoveryIntervalsApplied = earned;
-    await player.recoverHp(pending);
-    await player.recoverMp(pending);
     await _saveTimer();
   }
 
@@ -551,6 +562,9 @@ class StudyTimer extends ChangeNotifier {
         return null;
       }
 
+      final sessionKey = startedAt?.millisecondsSinceEpoch ?? (endTime ?? 0);
+      final mpEventId = 'quest-mp:$questId:$sessionKey';
+
       if (questId.startsWith('weekly_special_')) {
         final mission = questSystem.weeklySpecialMission;
         if (mission == null ||
@@ -562,15 +576,18 @@ class StudyTimer extends ChangeNotifier {
 
         final earnedXp =
             await questSystem.completeWeeklySpecialMission(player);
-        if (earnedXp == null) {
+        if (earnedXp == null && !mission.isCompleted) {
           debugPrint('CLAIM ERROR: Special mission could not be completed');
           return null;
         }
 
-        await player.setMp(player.mp - mpToDeduct);
+        // If the app was terminated after mission completion but before the
+        // MP write, allow the claim to finish. The event ledger prevents a
+        // second deduction if the MP write had already succeeded.
+        await player.deductMpOnce(mpEventId, mpToDeduct);
         await player.addStudyTime(mission.durationMinutes);
         await _clearSession();
-        return earnedXp;
+        return earnedXp ?? 0;
       }
 
       final quest = questSystem.getQuestById(questId);
@@ -582,15 +599,17 @@ class StudyTimer extends ChangeNotifier {
       final studyMinutes = quest.durationMinutes;
       final earnedXp = await questSystem.completeQuest(questId, player);
 
-      if (earnedXp == null) {
+      if (earnedXp == null && !questSystem.isCompleted(questId)) {
         debugPrint('CLAIM ERROR: QuestSystem returned null');
         return null;
       }
 
-      await player.setMp(player.mp - mpToDeduct);
+      // MP is deducted only after the quest is confirmed complete. This also
+      // safely finishes a claim interrupted after quest completion.
+      await player.deductMpOnce(mpEventId, mpToDeduct);
       await player.addStudyTime(studyMinutes);
       await _clearSession();
-      return earnedXp;
+      return earnedXp ?? 0;
     } catch (error, stackTrace) {
       debugPrint('CLAIM EXCEPTION: $error');
       debugPrint('$stackTrace');
