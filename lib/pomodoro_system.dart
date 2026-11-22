@@ -62,6 +62,9 @@ class PomodoroSystem extends ChangeNotifier {
   }
 
   Future<void> load() async {
+    _ticker?.cancel();
+    _ticker = null;
+    _isFinishing = false;
     final prefs = await SharedPreferences.getInstance();
     focusMinutes = (prefs.getInt(_focusMinutesKey) ?? 25).clamp(1, 180);
     shortBreakMinutes = (prefs.getInt(_shortBreakMinutesKey) ?? 5).clamp(1, 60);
@@ -198,44 +201,48 @@ class PomodoroSystem extends ChangeNotifier {
   Future<void> _finishPhase() async {
     if (_isFinishing || !isRunning) return;
     _isFinishing = true;
-    _ticker?.cancel();
-    _ticker = null;
-    isRunning = false;
-    _endTimeMs = null;
-    await notifications.cancelPomodoroEnd();
+    try {
+      _ticker?.cancel();
+      _ticker = null;
+      isRunning = false;
+      _endTimeMs = null;
+      await notifications.cancelPomodoroEnd();
 
-    final finishedPhase = phase;
-    if (finishedPhase == PomodoroPhase.focus) {
-      completedFocusSessions++;
-      phase = completedFocusSessions % longBreakEvery == 0
-          ? PomodoroPhase.longBreak
-          : PomodoroPhase.shortBreak;
-      remainingSeconds = _durationFor(phase) * 60;
-    } else {
-      phase = PomodoroPhase.focus;
-      remainingSeconds = focusMinutes * 60;
+      final finishedPhase = phase;
+      if (finishedPhase == PomodoroPhase.focus) {
+        completedFocusSessions++;
+        phase = completedFocusSessions % longBreakEvery == 0
+            ? PomodoroPhase.longBreak
+            : PomodoroPhase.shortBreak;
+        remainingSeconds = _durationFor(phase) * 60;
+      } else {
+        phase = PomodoroPhase.focus;
+        remainingSeconds = focusMinutes * 60;
+      }
+
+      // Persist the phase transition before awarding study time to prevent
+      // an expired focus timer from awarding the same session after restart.
+      await _save();
+      if (finishedPhase == PomodoroPhase.focus) {
+        await player.addStudyTime(focusMinutes);
+        await notifications.addNotification(
+          'POMODORO FOCUS COMPLETED',
+          'Focus session complete. ${phaseLabel.toLowerCase()} is ready.',
+          type: 'pomodoro',
+        );
+      } else {
+        await notifications.addNotification(
+          'POMODORO BREAK COMPLETED',
+          'Break complete. Your next focus session is ready.',
+          type: 'pomodoro',
+        );
+      }
+    } catch (error) {
+      debugPrint('POMODORO PHASE COMPLETION ERROR: $error');
+    } finally {
+      _isFinishing = false;
+      notifyListeners();
     }
-
-    // Persist the phase transition before awarding study time to prevent
-    // an expired focus timer from awarding the same session after restart.
-    await _save();
-    if (finishedPhase == PomodoroPhase.focus) {
-      await player.addStudyTime(focusMinutes);
-      await notifications.addNotification(
-        'POMODORO FOCUS COMPLETED',
-        'Focus session complete. ${phaseLabel.toLowerCase()} is ready.',
-        type: 'pomodoro',
-      );
-    } else {
-      await notifications.addNotification(
-        'POMODORO BREAK COMPLETED',
-        'Break complete. Your next focus session is ready.',
-        type: 'pomodoro',
-      );
-    }
-
-    _isFinishing = false;
-    notifyListeners();
   }
 
   Future<void> _scheduleEndNotification() async {
