@@ -19,6 +19,8 @@ class SupabaseConfig {
     'code_expiry_minutes': '30',
     'emergency_unlock_minutes': '60',
     'youtube_warning_interval_minutes': '5',
+    'social_media_daily_limit_minutes': '240',
+    'games_daily_limit_minutes': '120',
     'youtube_hp_damage_interval_minutes': '30',
     'youtube_hp_damage_base_percent': '5',
     'min_app_version': '1.0.0',
