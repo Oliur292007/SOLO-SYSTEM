@@ -10,6 +10,7 @@ on:
       - 'lib/quest_system.dart'
       - 'lib/study_timer.dart'
       - 'lib/cloud_progress_sync.dart'
+      - 'lib/screen_time_page.dart'
       - 'android/app/src/main/**'
       - 'test/**'
       - '.github/workflows/hp-mp-recovery-ci.yml'

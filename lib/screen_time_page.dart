@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -21,33 +23,49 @@ class _ScreenTimePageState extends State<ScreenTimePage>
   Map<String, dynamic> _summary = {};
   bool _loading = true;
   bool _hasAccessibility = false;
+  bool _usagePromptShown = false;
   String? _error;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _refresh();
+    // Refresh the displayed Android usage totals while this page is visible.
+    // This reads local UsageStats only; it does not repeatedly call Supabase.
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _refresh(showLoading: false, syncConfig: false),
+    );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _refresh();
+    if (state == AppLifecycleState.resumed) {
+      _refresh(showLoading: false, syncConfig: false);
+    }
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  Future<void> _refresh() async {
-    if (mounted) setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _refresh({
+    bool showLoading = true,
+    bool syncConfig = true,
+  }) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
-      await widget.supabaseService.forceSync();
+      if (syncConfig) await widget.supabaseService.forceSync();
       final result = await _screenTimeChannel.invokeMapMethod<String, dynamic>(
         'getDailyUsage',
       );
@@ -60,7 +78,14 @@ class _ScreenTimePageState extends State<ScreenTimePage>
         _summary = result ?? {};
         _hasAccessibility = accessibility;
         _loading = false;
+        _error = null;
       });
+      if (result?['hasUsageAccess'] != true && !_usagePromptShown) {
+        _usagePromptShown = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showUsageAccessPrompt();
+        });
+      }
     } on PlatformException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -74,6 +99,40 @@ class _ScreenTimePageState extends State<ScreenTimePage>
         _loading = false;
       });
     }
+  }
+
+  Future<void> _showUsageAccessPrompt() async {
+    if (!mounted || _summary['hasUsageAccess'] == true) return;
+    final colors = SystemColors.of(context);
+    final openSettings = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: colors.panel,
+        icon: Icon(Icons.insights_outlined, color: colors.cyan, size: 34),
+        title: Text(
+          'Enable App Usage Access',
+          style: TextStyle(color: colors.text, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'SOLO SYSTEM needs Usage Access to read daily app usage, update '
+          'Screen Time totals, and enforce your Social Media and Games limits. '
+          'Your usage data is read on this device.',
+          style: TextStyle(color: colors.muted, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text('LATER', style: TextStyle(color: colors.muted)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('GRANT ACCESS'),
+          ),
+        ],
+      ),
+    );
+    if (openSettings == true) await _openUsageAccess();
   }
 
   Future<void> _openAccessibilitySettings() async {
@@ -187,7 +246,7 @@ class _ScreenTimePageState extends State<ScreenTimePage>
         title: const Text('SCREEN TIME'),
         actions: [
           IconButton(
-            onPressed: _loading ? null : _refresh,
+            onPressed: _loading ? null : () => _refresh(),
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh usage',
           ),
@@ -267,6 +326,11 @@ class _ScreenTimePageState extends State<ScreenTimePage>
                           color: colors.cyan,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1.2)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Usage refreshes automatically • Daily reset at 12:00 AM',
+                    style: TextStyle(color: colors.muted, fontSize: 10),
+                  ),
                   const SizedBox(height: 12),
                   _usageCard(
                     colors: colors,
@@ -338,8 +402,9 @@ class _ScreenTimePageState extends State<ScreenTimePage>
                     'Automatic detection selects social media, games and education apps. '
                     'To override an app manually in Supabase, edit public.whitelist.screen_time_category: '
                     'social_media, game, education or excluded. Keep category = allowed for apps '
-                    'that must remain available during Study Protection. YouTube uses youtube_special.\n\n'
-                    'Usage totals reset at local midnight. Limits are enforced by Android Accessibility Service.',
+                    'that must remain available during Study Protection.\n\n'
+                    'Usage totals are read from Android Usage Stats. Android may publish small usage updates with a delay; '
+                    'the page refreshes every 10 seconds while open. Daily totals reset at local midnight.',
                     style: TextStyle(color: colors.muted, fontSize: 11, height: 1.5),
                   ),
                 ),
