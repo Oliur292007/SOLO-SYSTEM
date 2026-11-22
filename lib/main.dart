@@ -453,10 +453,18 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
       final exactAlarms =
           await widget.notificationService.canScheduleExactNotifications();
       bool accessibility = false;
+      bool accessibilityConnected = false;
       try {
         accessibility =
             await _appRestrictionChannel.invokeMethod<bool>(
                   'isAccessibilityEnabled',
+                ) ??
+                false;
+        // Give Android a moment to reconnect the service after an APK update.
+        await Future<void>.delayed(const Duration(seconds: 2));
+        accessibilityConnected =
+            await _appRestrictionChannel.invokeMethod<bool>(
+                  'isAccessibilityServiceConnected',
                 ) ??
                 false;
       } catch (_) {}
@@ -466,16 +474,17 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
         if (!exactAlarms) 'Exact Alarm',
         if (!accessibility) 'Accessibility / Study App Protection',
       ];
-      if (missing.isEmpty || !mounted) return;
+      final needsReconnect = accessibility && !accessibilityConnected;
+      if (missing.isEmpty && !needsReconnect || !mounted) return;
 
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('CHECK APP PERMISSIONS'),
           content: Text(
-            'After this app update, Android reports that these permissions '
-            'are currently disabled: ${missing.join(', ')}. '
-            'Please review them so Shadow Learner can work correctly.',
+            needsReconnect
+                ? 'Android still lists Study App Protection as enabled, but its service is not connected after this update. Open Accessibility Settings, switch Shadow Learner off, wait a few seconds, then switch it on again. Other missing permissions: ${missing.isEmpty ? 'None' : missing.join(', ')}.'
+                : 'After this app update, Android reports that these permissions are currently disabled: ${missing.join(', ')}. Please review them so Shadow Learner can work correctly.',
           ),
           actions: [
             TextButton(
@@ -493,7 +502,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
                   ),
                 );
               },
-              child: const Text('REVIEW PERMISSIONS'),
+              child: const Text('OPEN PERMISSION SETTINGS'),
             ),
           ],
         ),
