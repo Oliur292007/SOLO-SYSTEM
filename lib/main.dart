@@ -18,6 +18,7 @@ import 'cloud_progress_sync.dart';
 import 'supabase_service.dart';
 import 'security_controller.dart';
 import 'security_page.dart';
+import 'screen_time_page.dart';
 import 'app_update_service.dart';
 
 Future<void> main() async {
@@ -1050,6 +1051,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             onDarkModeChanged: widget.onDarkModeChanged,
             appVersionLabel: widget.appVersionLabel,
             notificationService: widget.notificationService,
+            supabaseService: widget.supabaseService,
             onCheckForUpdates: _checkForAppUpdate,
           ),
         ];
@@ -3618,6 +3620,7 @@ class SettingsPage extends StatelessWidget {
   final ValueChanged<bool> onDarkModeChanged;
   final String appVersionLabel;
   final MissionNotificationService notificationService;
+  final SupabaseService supabaseService;
   final VoidCallback onCheckForUpdates;
 
   const SettingsPage({
@@ -3627,6 +3630,7 @@ class SettingsPage extends StatelessWidget {
     required this.onDarkModeChanged,
     required this.appVersionLabel,
     required this.notificationService,
+    required this.supabaseService,
     required this.onCheckForUpdates,
   });
 
@@ -3725,6 +3729,23 @@ class SettingsPage extends StatelessWidget {
                   MaterialPageRoute(
                     builder: (_) => PermissionManagementPage(
                       notificationService: notificationService,
+                    ),
+                  ),
+                ),
+              ),
+              Divider(color: c.divider, height: 1),
+              ListTile(
+                leading: Icon(Icons.timer_outlined, color: c.cyan),
+                title: Text('Screen Time', style: TextStyle(color: c.text)),
+                subtitle: Text(
+                  'Daily social media and game limits',
+                  style: TextStyle(color: c.muted),
+                ),
+                trailing: Icon(Icons.chevron_right, color: c.muted),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ScreenTimePage(
+                      supabaseService: supabaseService,
                     ),
                   ),
                 ),
