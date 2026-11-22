@@ -541,6 +541,7 @@ class QuestSystem extends ChangeNotifier {
 
     await _cleanupOrphanQuestIds();
     await _checkDeadlines();
+    _maybeApplyHpCriticalPenalty(restSystem.player);
     _startDeadlineChecker();
     _syncPenaltyTicker();
     notifyListeners();
@@ -969,9 +970,7 @@ class QuestSystem extends ChangeNotifier {
         // Sleeping miss: Night Lock + HP damage, no penalty timer.
         if (quest.id == 'sleeping') {
           isNightLockActive = true;
-          missedQuestIds.add(quest.id);
           await _saveNightLock();
-          await _saveMissed();
 
           await _applyMissDamage(
             player,
@@ -979,44 +978,28 @@ class QuestSystem extends ChangeNotifier {
             'Sleeping Missed',
             eventId: 'miss:sleeping:${quest.deadline!.millisecondsSinceEpoch}',
           );
-
           _maybeApplyHpCriticalPenalty(player);
+
+          missedQuestIds.add(quest.id);
+          await _saveMissed();
           continue;
         }
 
         // Wakeup miss: end long rest, clear night lock, HP damage + penalty.
-        if (quest.id == 'wakeup') {
-          await restSystem.endLongRest(endedAt: quest.deadline!);
-          isNightLockActive = false;
-          await _saveNightLock();
-          await _startPenalty(quest.deadline!);
-          missedQuestIds.add(quest.id);
-          await _saveMissed();
-
-          await _applyMissDamage(
-            player,
-            _wakeupMissPercent,
-            'Wakeup Missed',
-            eventId: 'miss:wakeup:${quest.deadline!.millisecondsSinceEpoch}',
-          );
-
-          _maybeApplyHpCriticalPenalty(player);
-          continue;
-        }
+wakeup order
 
         // Other mandatory timer missions.
         await _startPenalty(quest.deadline!);
-        missedQuestIds.add(quest.id);
-        await _saveMissed();
-
         await _applyMissDamage(
           player,
           _mandatoryMissPercent,
           'Mission Missed: ${quest.name}',
           eventId: 'miss:${quest.id}:${quest.deadline!.millisecondsSinceEpoch}',
         );
-
         _maybeApplyHpCriticalPenalty(player);
+
+        missedQuestIds.add(quest.id);
+        await _saveMissed();
       }
 
       await _savePenalty();
@@ -1261,8 +1244,12 @@ class QuestSystem extends ChangeNotifier {
   }
 
   void _onPlayerChanged() {
-    // HP restored → clear HP-critical flag & ticker sync.
-    if (!restSystem.player.isCriticalHp && _hpCriticalPenaltyApplied) {
+    if (!isLoaded) return;
+    final player = restSystem.player;
+    if (player.isCriticalHp) {
+      // Also covers a process interruption immediately after HP damage.
+      _maybeApplyHpCriticalPenalty(player);
+    } else if (_hpCriticalPenaltyApplied) {
       _hpCriticalPenaltyApplied = false;
     }
   }
