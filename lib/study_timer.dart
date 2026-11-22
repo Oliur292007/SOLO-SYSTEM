@@ -367,7 +367,9 @@ class StudyTimer extends ChangeNotifier {
         );
         final damage = cappedDamage.round();
 
-        hpDamageApplied = await player.applyHpDamage(
+        final sessionKey = startedAt!.millisecondsSinceEpoch;
+        hpDamageApplied = await player.applyHpDamageOnce(
+          'cancel:${activeQuestId ?? 'unknown'}:$sessionKey',
           damage,
           reason: 'Session Cancelled',
         );
