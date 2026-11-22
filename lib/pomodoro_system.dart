@@ -87,6 +87,7 @@ class PomodoroSystem extends ChangeNotifier {
         await _finishPhase();
       } else {
         _startTicker();
+        await _scheduleEndNotification();
       }
     } else {
       isRunning = false;
@@ -143,6 +144,7 @@ class PomodoroSystem extends ChangeNotifier {
     isRunning = true;
     await _save();
     _startTicker();
+    await _scheduleEndNotification();
     notifyListeners();
     return true;
   }
@@ -154,6 +156,7 @@ class PomodoroSystem extends ChangeNotifier {
     _ticker = null;
     isRunning = false;
     _endTimeMs = null;
+    await notifications.cancelPomodoroEnd();
     await _save();
     notifyListeners();
   }
@@ -163,6 +166,7 @@ class PomodoroSystem extends ChangeNotifier {
     _ticker = null;
     isRunning = false;
     _endTimeMs = null;
+    await notifications.cancelPomodoroEnd();
     phase = PomodoroPhase.focus;
     remainingSeconds = focusMinutes * 60;
     await _save();
@@ -198,6 +202,7 @@ class PomodoroSystem extends ChangeNotifier {
     _ticker = null;
     isRunning = false;
     _endTimeMs = null;
+    await notifications.cancelPomodoroEnd();
 
     final finishedPhase = phase;
     if (finishedPhase == PomodoroPhase.focus) {
@@ -231,6 +236,19 @@ class PomodoroSystem extends ChangeNotifier {
 
     _isFinishing = false;
     notifyListeners();
+  }
+
+  Future<void> _scheduleEndNotification() async {
+    final end = _endTimeMs;
+    if (!isRunning || end == null) return;
+    final isFocus = phase == PomodoroPhase.focus;
+    await notifications.schedulePomodoroEnd(
+      endTime: DateTime.fromMillisecondsSinceEpoch(end),
+      title: isFocus ? 'POMODORO FOCUS COMPLETED' : 'POMODORO BREAK COMPLETED',
+      body: isFocus
+          ? 'Your focus session is complete. Take your scheduled break.'
+          : 'Your break is complete. Return to your focus session.',
+    );
   }
 
   Future<void> _save() async {
