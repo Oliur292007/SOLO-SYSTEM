@@ -24,44 +24,38 @@ Future<void> main() async {
 
   final player = PlayerSystem();
   final timetableSystem = TimetableSystem();
-
   final restSystem = RestSystem(player: player);
-
   final questSystem = QuestSystem(
     timetableSystem: timetableSystem,
     restSystem: restSystem,
   );
-
   final studyTimer = StudyTimer();
   final notificationService = MissionNotificationService();
-  await notificationService.initialize();
 
-  // UID Manager
+  // Local identity and progress preferences are essential for the first frame.
+  // Keep all remote work out of the critical startup path.
   final uidManager = UidManager();
-  await uidManager.initialize();
+  await uidManager.initialize().timeout(const Duration(seconds: 5));
 
-  // Supabase Service
   final supabaseService = SupabaseService(uidManager: uidManager);
-  await supabaseService.initialize();
+  await supabaseService.initialize().timeout(const Duration(seconds: 10));
 
-  // Telegram Bot is the only authority allowed to register a UID.
-  // The app must never create a server account on its own.
   final cloudProgressSync = CloudProgressSync(
     uidManager: uidManager,
     supabaseService: supabaseService,
   );
-  await cloudProgressSync.initialize();
+  await cloudProgressSync.initialize().timeout(const Duration(seconds: 5));
 
-  // Security Controller
   final securityController = SecurityController(
     uidManager: uidManager,
     supabaseService: supabaseService,
   );
-  await securityController.initialize();
+  await securityController.initialize().timeout(const Duration(seconds: 5));
 
-  // Attach UID to player
   player.attachUid(uidManager.uid, uidManager.isRegistered);
 
+  // Render the app immediately. Notification setup and remote refresh must
+  // never hold the native Android launch screen open.
   runApp(
     ShadowLearnerApp(
       player: player,
