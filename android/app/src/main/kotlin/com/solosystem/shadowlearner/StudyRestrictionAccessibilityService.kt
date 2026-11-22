@@ -33,12 +33,20 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     private var currentForegroundPackage: String? = null
     private var currentSessionUsageMs = 0L
     private var lastUsageTickElapsed = 0L
+    private var currentUsageDay = usageDayKey()
     private var youtubeWarningRunnable: Runnable? = null
 
     private val screenTimeCheck = object : Runnable {
         override fun run() {
             val packageName = currentForegroundPackage
             val nowElapsed = SystemClock.elapsedRealtime()
+            val today = usageDayKey()
+            if (today != currentUsageDay) {
+                currentUsageDay = today
+                currentSessionUsageMs = if (packageName == null) 0L else
+                    ScreenTimePolicy.usageByPackage(this@StudyRestrictionAccessibilityService)[packageName] ?: 0L
+                lastUsageTickElapsed = nowElapsed
+            }
             if (lastUsageTickElapsed > 0L && isScreenInteractive()) {
                 currentSessionUsageMs += (nowElapsed - lastUsageTickElapsed).coerceAtLeast(0L)
             }
@@ -213,6 +221,10 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             .build()
         runCatching { manager.notify(WARNING_NOTIFICATION_ID, notification) }
     }
+
+    private fun usageDayKey(): String =
+        java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault())
+            .format(java.util.Date())
 
     private fun isScreenInteractive(): Boolean {
         val power = getSystemService(Context.POWER_SERVICE) as PowerManager
