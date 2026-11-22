@@ -60,7 +60,7 @@ class StudyTimer extends ChangeNotifier {
   int recoveryIntervalsApplied = 0;
 
   bool get isPomodoroBreak => pomodoroEnabled && (pomodoroPhase == 'short_break' || pomodoroPhase == 'long_break');
-  String get pomodoroPhaseLabel => !pomodoroEnabled ? '' : pomodoroPhase == 'short_break' ? 'SHORT BREAK' : pomodoroPhase == 'long_break' ? 'LONG BREAK' : 'FOCUS SESSION ' + (completedFocusSessions + 1).toString() + '/4';
+  String get pomodoroPhaseLabel => !pomodoroEnabled ? '' : pomodoroPhase == 'short_break' ? 'SHORT BREAK' : pomodoroPhase == 'long_break' ? 'LONG BREAK' : 'FOCUS SESSION ' + ((completedFocusSessions % 4) + 1).toString() + '/4';
   int get displayedSeconds => isPomodoroBreak ? phaseRemainingSeconds : remainingSeconds;
   String get focusRemainingFormatted {
     final minutes = (remainingSeconds ~/ 60).toString().padLeft(2, '0');
