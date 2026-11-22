@@ -469,6 +469,39 @@ class PlayerSystem extends ChangeNotifier {
     return actualDamage;
   }
 
+  /// Applies HP damage once for a stable mission/session event ID.
+  /// Prevents duplicate penalties if the app is interrupted during cleanup.
+  Future<int> applyHpDamageOnce(
+    String eventId,
+    int damage, {
+    String? reason,
+  }) async {
+    if (damage <= 0 || hp <= 0) return 0;
+    final actualDamage = damage.clamp(0, hp);
+    final applied = await applyVitalChangeOnce(
+      eventId,
+      hpDelta: -actualDamage,
+    );
+    if (!applied) return 0;
+
+    hpDamageHistory.add(
+      HpDamageEvent(
+        reason: reason ?? 'Unknown',
+        damage: actualDamage,
+        timestamp: DateTime.now(),
+      ),
+    );
+    if (hpDamageHistory.length > _maxHistoryEntries) {
+      hpDamageHistory.removeRange(
+        0,
+        hpDamageHistory.length - _maxHistoryEntries,
+      );
+    }
+    await _saveHpDamageHistory();
+    notifyListeners();
+    return actualDamage;
+  }
+
   Future<void> clearHpDamageHistory() async {
     hpDamageHistory.clear();
     await _saveHpDamageHistory();
