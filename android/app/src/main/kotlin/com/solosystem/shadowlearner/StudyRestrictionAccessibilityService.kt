@@ -60,7 +60,10 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 stopYouTubeWarnings()
             }
 
-            if (packageName != null && !isSystemAllowedPackage(packageName)) {
+            if (packageName != null &&
+                ScreenTimePolicy.hasUsageAccess(this@StudyRestrictionAccessibilityService) &&
+                !isSystemAllowedPackage(packageName)
+            ) {
                 val reportedUsage = ScreenTimePolicy.usageByPackage(
                     this@StudyRestrictionAccessibilityService
                 )[packageName] ?: 0L
@@ -122,7 +125,9 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         if (isSystemAllowedPackage(openedPackage)) return
 
         // Daily category limits apply even when Study Protection is inactive.
-        if (ScreenTimePolicy.isLimitReached(this, openedPackage)) {
+        if (ScreenTimePolicy.hasUsageAccess(this) &&
+            ScreenTimePolicy.isLimitReached(this, openedPackage)
+        ) {
             redirectHome(openedPackage)
             return
         }
