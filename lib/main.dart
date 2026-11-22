@@ -546,7 +546,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   }
 
   Future<void> _showFirstLaunchSetup() async {
-    const onboardingVersion = 4;
+    const onboardingVersion = 5;
     const onboardingVersionKey = 'first_launch_onboarding_version';
     final prefs = await SharedPreferences.getInstance();
     if ((prefs.getInt(onboardingVersionKey) ?? 0) >= onboardingVersion) {
@@ -703,8 +703,12 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
         title: const Text('WELCOME TO SHADOW LEARNER'),
         content: Text(
           'Your Player UID:\n${widget.uidManager.uid ?? '—'}\n\n'
-          'Complete your Telegram registration, or retrieve your existing '
-          'player progress from the cloud.',
+          'New user: open the Telegram companion bot, press Register UID, '
+          'send only this UID, then share your own Telegram contact. '
+          'You do not need to type your phone number.\n\n'
+          'Existing user: choose Find / Link Existing UID or Pair Cloud Progress '
+          'in Telegram. Use Retrieve Progress below and enter your existing UID '
+          'if it is different from the UID shown here.',
         ),
         actions: [
           TextButton(
@@ -721,12 +725,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
           FilledButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
-              final uid = widget.uidManager.uid ?? '';
-              final command =
-                  'REG. UID: $uid, USER: +8801XXXXXXXXX';
-              final uri = Uri.parse(
-                'https://t.me/Solo_Sysyem_Bot?text=${Uri.encodeComponent(command)}',
-              );
+              final uri = Uri.parse('https://t.me/Solo_Sysyem_Bot');
               final opened = await launchUrl(
                 uri,
                 mode: LaunchMode.externalApplication,
@@ -741,7 +740,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
                 );
               }
             },
-            child: const Text('COMPLETE REGISTRATION'),
+            child: const Text('OPEN TELEGRAM BOT'),
           ),
         ],
       ),
