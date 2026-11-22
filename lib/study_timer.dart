@@ -473,7 +473,7 @@ class StudyTimer extends ChangeNotifier {
     if (pending <= 0) return;
     final sessionKey = startedAt?.millisecondsSinceEpoch ?? (endTime ?? 0);
     await player.recoverVitalsOnce(
-      'pomodoro:$activeQuestId:$sessionKey:$pomodoroPhase:$earned',
+      'pomodoro:$activeQuestId:$sessionKey:$pomodoroPhase:$completedFocusSessions:$earned',
       hpAmount: pending,
       mpAmount: pending,
     );
