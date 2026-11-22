@@ -12,6 +12,7 @@ on:
       - 'lib/cloud_progress_sync.dart'
       - 'android/app/src/main/**'
       - 'test/**'
+      - '.github/workflows/hp-mp-recovery-ci.yml'
 
 permissions:
   contents: read
@@ -45,3 +46,11 @@ jobs:
 
       - name: Build Debug APK
         run: flutter build apk --debug
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: solo-system-study-protection-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
