@@ -1,5 +1,8 @@
 name: Shadow Learner Android APK
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   push:
@@ -75,3 +78,19 @@ jobs:
           name: SHADOW-LEARNER-APK
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
+      - name: Publish GitHub Release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION_LINE=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          VERSION_NAME=${VERSION_LINE%%+*}
+          BUILD_NUMBER=${VERSION_LINE##*+}
+          TAG="v${VERSION_NAME}+${BUILD_NUMBER}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" build/app/outputs/flutter-apk/app-release.apk --clobber
+          else
+            gh release create "$TAG" build/app/outputs/flutter-apk/app-release.apk \
+              --title "Shadow Learner ${VERSION_NAME}" \
+              --notes "Shadow Learner Android release ${VERSION_NAME} (build ${BUILD_NUMBER})."
+          fi
