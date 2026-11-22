@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 
 /**
@@ -30,16 +31,32 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     private var lastRedirectAt = 0L
     private var lastBlockedPackage: String? = null
     private var currentForegroundPackage: String? = null
+    private var currentSessionUsageMs = 0L
+    private var lastUsageTickElapsed = 0L
     private var youtubeWarningRunnable: Runnable? = null
 
     private val screenTimeCheck = object : Runnable {
         override fun run() {
             val packageName = currentForegroundPackage
-            if (packageName != null && isScreenInteractive() &&
-                !isSystemAllowedPackage(packageName) &&
-                ScreenTimePolicy.isLimitReached(this@StudyRestrictionAccessibilityService, packageName)
-            ) {
-                redirectHome(packageName)
+            val nowElapsed = SystemClock.elapsedRealtime()
+            if (lastUsageTickElapsed > 0L && isScreenInteractive()) {
+                currentSessionUsageMs += (nowElapsed - lastUsageTickElapsed).coerceAtLeast(0L)
+            }
+            lastUsageTickElapsed = nowElapsed
+
+            if (packageName != null && !isSystemAllowedPackage(packageName)) {
+                val reportedUsage = ScreenTimePolicy.usageByPackage(
+                    this@StudyRestrictionAccessibilityService
+                )[packageName] ?: 0L
+                val usedMs = maxOf(reportedUsage, currentSessionUsageMs)
+                if (ScreenTimePolicy.limitReachedForUsage(
+                        this@StudyRestrictionAccessibilityService,
+                        packageName,
+                        usedMs
+                    )
+                ) {
+                    redirectHome(packageName)
+                }
             }
             handler.postDelayed(this, 10_000L)
         }
@@ -71,7 +88,12 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             ?: event.packageName?.toString()?.takeIf { it.isNotBlank() }
             ?: return
 
-        currentForegroundPackage = openedPackage
+        if (currentForegroundPackage != openedPackage) {
+            currentForegroundPackage = openedPackage
+            currentSessionUsageMs =
+                ScreenTimePolicy.usageByPackage(this)[openedPackage] ?: 0L
+            lastUsageTickElapsed = SystemClock.elapsedRealtime()
+        }
         val studyProtectionActive = getSharedPreferences(PREFS, MODE_PRIVATE)
             .getBoolean(KEY_ACTIVE, false)
 
