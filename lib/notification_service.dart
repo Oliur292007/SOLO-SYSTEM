@@ -174,58 +174,6 @@ class MissionNotificationService extends ChangeNotifier {
     }
   }
 
-  static const int _pomodoroNotificationId = 21001;
-
-  Future<void> schedulePomodoroEnd({
-    required DateTime endTime,
-    required String title,
-    required String body,
-  }) async {
-    try {
-      if (!_initialized) await initialize();
-      final android = _plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
-      final enabled = android == null ||
-          (await android.areNotificationsEnabled() ?? false);
-      if (!enabled) return;
-
-      const details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          'solo_pomodoro_timer',
-          'Pomodoro Timer',
-          channelDescription: 'Focus and break session completion alerts.',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-        iOS: DarwinNotificationDetails(),
-      );
-      final exactAllowed = await canScheduleExactNotifications();
-      await _plugin.zonedSchedule(
-        _pomodoroNotificationId,
-        title,
-        body,
-        tz.TZDateTime.from(endTime, tz.local),
-        details,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        androidScheduleMode: exactAllowed
-            ? AndroidScheduleMode.exactAllowWhileIdle
-            : AndroidScheduleMode.inexactAllowWhileIdle,
-      );
-    } catch (error) {
-      debugPrint('POMODORO NOTIFICATION SCHEDULE ERROR: $error');
-    }
-  }
-
-  Future<void> cancelPomodoroEnd() async {
-    try {
-      if (!_initialized) await initialize();
-      await _plugin.cancel(_pomodoroNotificationId);
-    } catch (error) {
-      debugPrint('POMODORO NOTIFICATION CANCEL ERROR: $error');
-    }
-  }
-
   Future<void> clearHistory() async {
     _history.clear();
     await _saveHistory();
