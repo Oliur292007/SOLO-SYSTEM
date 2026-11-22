@@ -164,7 +164,7 @@ object ScreenTimePolicy {
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
         return runCatching {
-            val events = manager.queryEvents(start, now)
+            val events = manager.queryEvents(start - 24L * 60L * 60L * 1000L, now)
             val event = android.app.usage.UsageEvents.Event()
             val activeSince = mutableMapOf<String, Long>()
             val totals = mutableMapOf<String, Long>()
@@ -182,7 +182,7 @@ object ScreenTimePolicy {
                         val foregroundStart = activeSince.remove(packageName)
                         if (foregroundStart != null && event.timeStamp >= foregroundStart) {
                             totals[packageName] = (totals[packageName] ?: 0L) +
-                                (event.timeStamp - foregroundStart)
+                                (event.timeStamp - maxOf(foregroundStart, start))
                         }
                     }
                 }
@@ -191,7 +191,7 @@ object ScreenTimePolicy {
             activeSince.forEach { (packageName, foregroundStart) ->
                 if (now >= foregroundStart) {
                     totals[packageName] = (totals[packageName] ?: 0L) +
-                        (now - foregroundStart)
+                        (now - maxOf(foregroundStart, start))
                 }
             }
             totals
