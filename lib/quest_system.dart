@@ -418,7 +418,6 @@ class QuestSystem extends ChangeNotifier {
   static const double _mandatoryMissPercent = 15.0;
   static const double _wakeupMissPercent = 18.0;
   static const double _sleepingMissPercent = 15.0;
-  static const double _cancelDamagePercent = 8.0;
 
   /// Hard cap per miss (fraction of maxHp).
   static const double _damageCapFraction = 0.40;
