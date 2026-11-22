@@ -207,7 +207,6 @@ class StudyTimer extends ChangeNotifier {
     );
     if (availableMp(player) < mpCost) return false;
 
-    _activePlayer = player;
     activeQuestId = questId;
     reservedMp = mpCost;
 
