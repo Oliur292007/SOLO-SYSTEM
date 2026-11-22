@@ -120,6 +120,37 @@ class StudyTimer extends ChangeNotifier {
         ? DateTime.fromMillisecondsSinceEpoch(startedMs)
         : null;
 
+    // Migrate an in-progress legacy Pomodoro session to the plain countdown.
+    final hadPomodoroSession =
+        prefs.getBool('quest_pomodoro_enabled') ?? false;
+    if (hadPomodoroSession) {
+      final wasOnBreak = const ['short_break', 'long_break']
+          .contains(prefs.getString('quest_pomodoro_phase'));
+      if (wasOnBreak) {
+        remainingSeconds = prefs.getInt('quest_pomodoro_focus_at_start') ??
+            remainingSeconds;
+      }
+      if (isRunning && remainingSeconds > 0) {
+        endTime = DateTime.now()
+            .add(Duration(seconds: remainingSeconds))
+            .millisecondsSinceEpoch;
+      } else if (!isRunning) {
+        endTime = null;
+      }
+      for (final key in [
+        'quest_pomodoro_enabled',
+        'quest_pomodoro_phase',
+        'quest_pomodoro_phase_remaining',
+        'quest_pomodoro_phase_duration',
+        'quest_pomodoro_focus_at_start',
+        'quest_pomodoro_sessions',
+        'quest_pomodoro_recovery_applied',
+      ]) {
+        await prefs.remove(key);
+      }
+      await _saveTimer();
+    }
+
     if (activeQuestId == null) {
       reservedMp = 0;
       startedAt = null;
