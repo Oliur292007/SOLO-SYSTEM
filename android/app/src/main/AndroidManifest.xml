@@ -7,7 +7,7 @@
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"
-        android:icon="@drawable/shadow_learner_icon">
+        android:icon="@mipmap/ic_launcher">
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="false" />
