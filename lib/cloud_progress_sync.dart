@@ -23,16 +23,16 @@ class CloudSyncResult {
   const CloudSyncResult(this.status, [this.message]);
 }
 
-/// Synchronizes only known Shadow Learner progress preferences.
-/// Account credentials, device tokens, app settings and service caches are
-/// deliberately excluded from cloud snapshots.
+/// Synchronizes recoverable Shadow Learner app state.
+/// Authentication secrets, device-bound tokens, temporary authorization
+/// grants and OS-owned permission state are deliberately excluded.
 class CloudProgressSync {
   static const String _deviceTokenKey = 'cloud_progress_device_token';
   static const String _localChangedKey = 'cloud_progress_local_changed_ms';
   static const String _cloudUpdatedKey = 'cloud_progress_updated_ms';
   static const String _lastSnapshotFingerprintKey =
       'cloud_progress_last_snapshot_fingerprint';
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
 
   static const Set<String> _progressKeys = {
     // Player
@@ -68,11 +68,28 @@ class CloudProgressSync {
     'timer_reserved_mp',
     'timer_started_at',
 
-    // Timetable and rest
+    // Timetable, rest and weekly special mission
     'study_timetable',
     'short_rest_start',
     'short_rest_applied',
     'long_rest_start',
+    'weekly_special_week',
+    'weekly_special_day',
+    'weekly_special_mission',
+    'daily_system_message_date',
+    'daily_system_message_text',
+
+    // UID registration identity (never device or bearer credentials)
+    'solo_uid',
+    'solo_uid_registered',
+    'solo_reg_attempts',
+    'player_uid',
+    'player_uid_registered',
+
+    // User preferences and notification history
+    'dark_mode',
+    'solo_notification_history',
+    'solo_notification_history_date',
   };
 
   final UidManager uidManager;
@@ -270,13 +287,16 @@ class CloudProgressSync {
           cloudMs > previousCloudMs) {
         await _applySnapshot(Map<String, dynamic>.from(snapshot));
         final restoredSnapshot = await _captureSnapshot();
-        final restoredFingerprint = _snapshotFingerprint(restoredSnapshot);
-        await prefs.setString(
-          _lastSnapshotFingerprintKey,
-          restoredFingerprint,
-        );
-        await prefs.setInt(_localChangedKey, cloudMs);
-        await prefs.setInt(_cloudUpdatedKey, cloudMs);
+
+        // Upgrade older cloud snapshots immediately. This also stores newly
+        // introduced recoverable preferences without waiting for user edits.
+        final migrated = await _uploadSnapshot(snapshot: restoredSnapshot);
+        if (!migrated) {
+          return const CloudSyncResult(
+            CloudSyncStatus.failed,
+            'Progress restored, but the cloud backup upgrade could not be saved.',
+          );
+        }
         return const CloudSyncResult(CloudSyncStatus.restored);
       }
 
@@ -411,12 +431,9 @@ class CloudProgressSync {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // Only remove missing keys that belong to the progress allowlist.
-      // Theme, onboarding, security and other app preferences remain intact.
-      for (final key in _progressKeys) {
-        if (!remote.containsKey(key)) await prefs.remove(key);
-      }
-
+      // Merge only values present in the incoming snapshot. A snapshot
+      // created by an older app version may not contain newer keys; absence
+      // must never be interpreted as an instruction to erase local data.
       for (final entry in remote.entries) {
         final key = entry.key;
         final value = entry.value;
