@@ -164,9 +164,37 @@ object ScreenTimePolicy {
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
         return runCatching {
-            manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, now)
-                .groupBy { it.packageName }
-                .mapValues { (_, entries) -> entries.sumOf { it.totalTimeInForeground } }
+            val events = manager.queryEvents(start, now)
+            val event = android.app.usage.UsageEvents.Event()
+            val activeSince = mutableMapOf<String, Long>()
+            val totals = mutableMapOf<String, Long>()
+
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                val packageName = event.packageName ?: continue
+                when (event.eventType) {
+                    android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED,
+                    android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                        activeSince[packageName] = event.timeStamp
+                    }
+                    android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED,
+                    android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                        val foregroundStart = activeSince.remove(packageName)
+                        if (foregroundStart != null && event.timeStamp >= foregroundStart) {
+                            totals[packageName] = (totals[packageName] ?: 0L) +
+                                (event.timeStamp - foregroundStart)
+                        }
+                    }
+                }
+            }
+
+            activeSince.forEach { (packageName, foregroundStart) ->
+                if (now >= foregroundStart) {
+                    totals[packageName] = (totals[packageName] ?: 0L) +
+                        (now - foregroundStart)
+                }
+            }
+            totals
         }.getOrDefault(emptyMap())
     }
 
