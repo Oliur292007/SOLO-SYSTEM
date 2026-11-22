@@ -29,6 +29,16 @@ class MainActivity : FlutterActivity() {
                         ).apply()
                         result.success(true)
                     }
+                    "getDailyUsage" -> result.success(ScreenTimePolicy.dailySummary(this))
+                    "hasUsageAccess" -> result.success(ScreenTimePolicy.hasUsageAccess(this))
+                    "openUsageAccessSettings" -> {
+                        ScreenTimePolicy.openUsageAccessSettings(this)
+                        result.success(true)
+                    }
+                    "syncScreenTimeConfig" -> {
+                        ScreenTimePolicy.sync(this, call.arguments as? Map<*, *> ?: emptyMap<Any, Any>())
+                        result.success(true)
+                    }
                     "getLocalTimeZone" -> result.success(TimeZone.getDefault().id)
                     "openAccessibilitySettings" -> {
                         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -55,19 +65,13 @@ class MainActivity : FlutterActivity() {
                             StudyRestrictionAccessibilityService::class.java
                         )
                         val expectedId = serviceComponent.flattenToString()
-
-                        // Read Android's enabled-service registry directly. Some OEM
-                        // builds expose a different serviceInfo.name representation.
                         val enabledServices = Settings.Secure.getString(
                             contentResolver,
                             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
                         ).orEmpty()
-
                         val enabledInSecureSettings = enabledServices
                             .split(':')
                             .any { it.equals(expectedId, ignoreCase = true) }
-
-                        // Keep AccessibilityManager as a secondary compatibility check.
                         val manager = getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
                         val enabledInManager = manager.getEnabledAccessibilityServiceList(
                             AccessibilityServiceInfo.FEEDBACK_ALL_MASK
@@ -79,7 +83,6 @@ class MainActivity : FlutterActivity() {
                                         StudyRestrictionAccessibilityService::class.java.simpleName
                                 )
                         }
-
                         result.success(enabledInSecureSettings || enabledInManager)
                     }
                     else -> result.notImplemented()
