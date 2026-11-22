@@ -1,20 +1,22 @@
-# SOLO SYSTEM
+# Shadow Learner
 
-A real-life leveling and productivity Android application.
+Shadow Learner is a real-life productivity, study, and personal-progression Android application developed by Solo System.
+
+## Android identity
+- Display name: Shadow Learner
+- Package ID: com.solosystem.shadowlearner
+- Developer / company branding: Solo System
 
 ## Features
-- Daily Quest System
-- Weekly Timetable
-- Screen Time Control
-- Sleep and Wake-up Quests
-- Penalty System
-- Essential Apps Whitelist
-- XP and Player Levels
+- Daily missions and weekly timetable
+- Study sessions, HP/MP, rest and recovery
+- XP, player levels, ranks and titles
+- Mission and schedule notifications
+- Study-app protection using Android Accessibility Service
+- UID registration and Telegram-linked account verification
+- Supabase cloud progress pairing and synchronization
 
 ## Technology
-- Flutter
-- Kotlin
-- SQLite
+Flutter, Kotlin, SQLite, SharedPreferences, Supabase, and the Shadow Learner Telegram companion bot.
 
-## Storage
-Local / Offline First
+The Telegram bot keeps its existing bot identity and username.

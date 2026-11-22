@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="study_protection_service_description">When a study timer is running, return to Home if a non-essential app is opened.</string>
+    <string name="app_name">Shadow Learner</string>
+    <string name="app_company_name">Solo System</string>
+    <string name="study_protection_service_description">When a Shadow Learner study timer is running, return to Home if a non-essential app is opened.</string>
 </resources>

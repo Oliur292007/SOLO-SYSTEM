@@ -63,7 +63,7 @@ Future<void> main() async {
   player.attachUid(uidManager.uid, uidManager.isRegistered);
 
   runApp(
-    SoloSystemApp(
+    ShadowLearnerApp(
       player: player,
       questSystem: questSystem,
       studyTimer: studyTimer,
@@ -168,7 +168,7 @@ class SystemColors extends ThemeExtension<SystemColors> {
   }
 }
 
-class SoloSystemApp extends StatefulWidget {
+class ShadowLearnerApp extends StatefulWidget {
   final PlayerSystem player;
   final QuestSystem questSystem;
   final StudyTimer studyTimer;
@@ -180,7 +180,7 @@ class SoloSystemApp extends StatefulWidget {
   final SecurityController securityController;
   final CloudProgressSync cloudProgressSync;
 
-  const SoloSystemApp({
+  const ShadowLearnerApp({
     super.key,
     required this.player,
     required this.questSystem,
@@ -195,10 +195,10 @@ class SoloSystemApp extends StatefulWidget {
   });
 
   @override
-  State<SoloSystemApp> createState() => _SoloSystemAppState();
+  State<ShadowLearnerApp> createState() => _ShadowLearnerAppState();
 }
 
-class _SoloSystemAppState extends State<SoloSystemApp> {
+class _ShadowLearnerAppState extends State<ShadowLearnerApp> {
   bool isDarkMode = true;
   String appVersionLabel = '1.0.0';
 
@@ -241,7 +241,7 @@ class _SoloSystemAppState extends State<SoloSystemApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'SOLO SYSTEM',
+      title: 'Shadow Learner',
       theme: ThemeData(
         brightness: Brightness.light,
         scaffoldBackgroundColor: SystemColors.light.bg,
@@ -558,7 +558,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('SET UP SOLO SYSTEM PERMISSIONS'),
+        title: const Text('SET UP SHADOW LEARNER PERMISSIONS'),
         content: const Text(
           'Enable mission notifications and Study App Protection. '
           'Notifications can be allowed in the next Android prompt. '
@@ -606,8 +606,8 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
         builder: (dialogContext) => AlertDialog(
           title: const Text('ALLOW NOTIFICATIONS'),
           content: const Text(
-            'SOLO SYSTEM cannot confirm that notifications are allowed. '
-            'Open App Info > Notifications and enable notifications for SOLO SYSTEM. '
+            'Shadow Learner cannot confirm that notifications are allowed. '
+            'Open App Info > Notifications and enable notifications for Shadow Learner. '
             'Then return to the app; mission reminders will be scheduled again.',
           ),
           actions: [
@@ -652,12 +652,12 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
           title: const Text('ENABLE STUDY APP PROTECTION'),
           content: const Text(
             'Study App Protection needs your approval in Android. Follow these steps in order:\n\n'
-            'STEP 1 — Open Accessibility Settings using the button below. Find SOLO SYSTEM. If Android does not allow you to switch it on yet, return to the Home Screen.\n\n'
-            'STEP 2 — Find the SOLO SYSTEM icon on your Home Screen. Press and hold it, then choose App info.\n\n'
+            'STEP 1 — Open Accessibility Settings using the button below. Find Shadow Learner. If Android does not allow you to switch it on yet, return to the Home Screen.\n\n'
+            'STEP 2 — Find the Shadow Learner icon on your Home Screen. Press and hold it, then choose App info.\n\n'
             'STEP 3 — In App info, tap the three-dot menu in the top-right corner. Choose Allow restricted settings and confirm. If you cannot see this option, make sure you completed Step 1 first.\n\n'
-            'STEP 4 — Open SOLO SYSTEM again. Go to Security and choose Set Up Study App Protection.\n\n'
-            'STEP 5 — Open SOLO SYSTEM in Accessibility Settings and switch on its service. Read the Android permission warning carefully, then confirm if you agree.\n\n'
-            'HOW IT WORKS: While a mission timer is running, SOLO SYSTEM can send you back to the Home Screen if you try to open another app. This does not uninstall or permanently lock other apps. You can turn the Accessibility service off at any time in Android Settings.',
+            'STEP 4 — Open Shadow Learner again. Go to Security and choose Set Up Study App Protection.\n\n'
+            'STEP 5 — Open Shadow Learner in Accessibility Settings and switch on its service. Read the Android permission warning carefully, then confirm if you agree.\n\n'
+            'HOW IT WORKS: While a mission timer is running, Shadow Learner can send you back to the Home Screen if you try to open another app. This does not uninstall or permanently lock other apps. You can turn the Accessibility service off at any time in Android Settings.',
           ),
         actions: [
           TextButton(
@@ -700,7 +700,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('WELCOME TO SOLO SYSTEM'),
+        title: const Text('WELCOME TO SHADOW LEARNER'),
         content: Text(
           'Your Player UID:\n${widget.uidManager.uid ?? '—'}\n\n'
           'Complete your Telegram registration, or retrieve your existing '
@@ -1006,12 +1006,22 @@ class DashboardPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'SOLO SYSTEM',
+                  'SHADOW LEARNER',
                   style: TextStyle(
                     color: c.cyan,
                     fontSize: 21,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 3,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'BY SOLO SYSTEM',
+                  style: TextStyle(
+                    color: c.muted,
+                    fontSize: 8,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 2,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -3396,7 +3406,7 @@ class _UidSecurityCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             isRegistered
-                ? 'Registered with SOLO SYSTEM servers.'
+                ? 'Registered with Shadow Learner servers.'
                 : 'Not registered — connect to internet.',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.7),

@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.oliur.solosystem.solo_system"
+    namespace = "com.solosystem.shadowlearner"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -17,7 +17,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.oliur.solosystem.solo_system"
+        applicationId = "com.solosystem.shadowlearner"
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

@@ -1,4 +1,4 @@
-name: SOLO SYSTEM Android APK
+name: Shadow Learner Android APK
 
 on:
   workflow_dispatch:
@@ -9,47 +9,36 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-
-      # Keep the checked-in Android project. It contains the custom
-      # MainActivity MethodChannel, timezone bridge, permissions and
-      # Accessibility service required by SOLO SYSTEM.
       - name: Verify Native Android Configuration
         run: |
-          test -f android/app/src/main/kotlin/com/example/solo_system/MainActivity.kt
-          test -f android/app/src/main/kotlin/com/example/solo_system/StudyRestrictionAccessibilityService.kt
-          grep -q 'namespace = "com.oliur.solosystem.solo_system"' android/app/build.gradle.kts
-          grep -q 'applicationId = "com.oliur.solosystem.solo_system"' android/app/build.gradle.kts
-          grep -q 'package com.oliur.solosystem.solo_system' android/app/src/main/kotlin/com/example/solo_system/MainActivity.kt
+          test -f android/app/src/main/kotlin/com/solosystem/shadowlearner/MainActivity.kt
+          test -f android/app/src/main/kotlin/com/solosystem/shadowlearner/StudyRestrictionAccessibilityService.kt
+          grep -q 'namespace = "com.solosystem.shadowlearner"' android/app/build.gradle.kts
+          grep -q 'applicationId = "com.solosystem.shadowlearner"' android/app/build.gradle.kts
+          grep -q 'package com.solosystem.shadowlearner' android/app/src/main/kotlin/com/solosystem/shadowlearner/MainActivity.kt
           grep -q 'SCHEDULE_EXACT_ALARM' android/app/src/main/AndroidManifest.xml
           grep -q 'ScheduledNotificationBootReceiver' android/app/src/main/AndroidManifest.xml
-
       - name: Install Dependencies
         run: flutter pub get
-
       - name: Analyze Dart Code
         run: flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
-
       - name: Build Release APK
         run: flutter build apk --release
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SOLO-SYSTEM-APK
+          name: SHADOW-LEARNER-APK
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14

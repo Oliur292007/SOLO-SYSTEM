@@ -1,4 +1,4 @@
-package com.oliur.solosystem.solo_system
+package com.solosystem.shadowlearner
 
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
@@ -28,9 +28,7 @@ class MainActivity : FlutterActivity() {
                         ).apply()
                         result.success(true)
                     }
-                    "getLocalTimeZone" -> {
-                        result.success(TimeZone.getDefault().id)
-                    }
+                    "getLocalTimeZone" -> result.success(TimeZone.getDefault().id)
                     "openAccessibilitySettings" -> {
                         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         result.success(true)
