@@ -186,12 +186,13 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         }
-        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        @Suppress("DEPRECATION")
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, WARNING_CHANNEL_ID)
         } else {
-            @Suppress("DEPRECATION")
             Notification.Builder(this)
-        }.setSmallIcon(android.R.drawable.ic_dialog_info)
+        }
+        val notification = builder.setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("STUDY PROTECTION REMINDER")
             .setContentText("YouTube is unlocked, but your study session is still active. Return to your mission.")
             .setStyle(
