@@ -183,7 +183,11 @@ object ScreenTimePolicy {
                         "usageMs" to (usage[info.packageName] ?: 0L)
                     )
                 }
-                .filter { it["category"] in listOf("social_media", "game", "education") }
+                .filter {
+                    it["category"] == "social_media" ||
+                        it["category"] == "game" ||
+                        it["category"] == "education"
+                }
                 .sortedByDescending { it["usageMs"] as Long }
         }.getOrDefault(emptyList())
         val socialMs = apps.filter { it["category"] == "social_media" }
