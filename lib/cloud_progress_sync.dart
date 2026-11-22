@@ -390,6 +390,29 @@ class CloudProgressSync {
     }
 
     final level = (progress['player_level'] as int? ?? 1).clamp(1, 999);
+    var snapshotHp = progress['player_hp'] as int? ?? 100;
+    var snapshotMp = progress['player_mp'] as int? ?? 100;
+    final vitalsState = progress['player_vitals_state'];
+    if (vitalsState is String && vitalsState.isNotEmpty) {
+      try {
+        final decodedVitals = jsonDecode(vitalsState);
+        if (decodedVitals is Map) {
+          if (decodedVitals['hp'] is int) {
+            snapshotHp = decodedVitals['hp'] as int;
+          }
+          if (decodedVitals['mp'] is int) {
+            snapshotMp = decodedVitals['mp'] as int;
+          }
+        }
+      } catch (_) {
+        // Keep the legacy scalar values when the combined snapshot is invalid.
+      }
+    }
+    // Keep the compatibility keys and player summary aligned with the source
+    // of truth even if Android was interrupted before writing mirror keys.
+    progress['player_hp'] = snapshotHp;
+    progress['player_mp'] = snapshotMp;
+
     final title = level <= 5
         ? 'The Awakener'
         : level <= 10
@@ -425,8 +448,8 @@ class CloudProgressSync {
         'level': level,
         'xp': progress['player_xp'] ?? 0,
         'total_xp': progress['player_total_xp'] ?? 0,
-        'hp': progress['player_hp'] ?? 100,
-        'mp': progress['player_mp'] ?? 100,
+        'hp': snapshotHp,
+        'mp': snapshotMp,
         'total_study_minutes': progress['total_study_minutes'] ?? 0,
         'rank': rank,
         'title': title,
