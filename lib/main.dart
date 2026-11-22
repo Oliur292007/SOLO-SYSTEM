@@ -449,6 +449,72 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     _trackedTitle = player.title;
   }
 
+  Future<void> _auditPermissionsForNewVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final versionKey = '${info.version}+${info.buildNumber}';
+      final prefs = await SharedPreferences.getInstance();
+      if ((prefs.getInt('first_launch_onboarding_version') ?? 0) < 6) {
+        return;
+      }
+      if (prefs.getString('permission_audit_version') == versionKey) return;
+      await prefs.setString('permission_audit_version', versionKey);
+
+      final notifications =
+          await widget.notificationService.areNotificationsEnabled();
+      final exactAlarms =
+          await widget.notificationService.canScheduleExactNotifications();
+      bool accessibility = false;
+      try {
+        accessibility =
+            await _appRestrictionChannel.invokeMethod<bool>(
+                  'isAccessibilityEnabled',
+                ) ??
+                false;
+      } catch (_) {}
+
+      final missing = <String>[
+        if (!notifications) 'Notifications',
+        if (!exactAlarms) 'Exact Alarm',
+        if (!accessibility) 'Accessibility / Study App Protection',
+      ];
+      if (missing.isEmpty || !mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('CHECK APP PERMISSIONS'),
+          content: Text(
+            'After this app update, Android reports that these permissions '
+            'are currently disabled: ${missing.join(', ')}. '
+            'Please review them so Shadow Learner can work correctly.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('LATER'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => PermissionManagementPage(
+                      notificationService: widget.notificationService,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('REVIEW PERMISSIONS'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      debugPrint('POST-UPDATE PERMISSION AUDIT ERROR: $error');
+    }
+  }
+
   Future<void> _checkForAppUpdate() async {
     final update = await widget.appUpdateService.checkForUpdate();
     if (update == null || !mounted) return;
@@ -599,6 +665,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       await _runFirstLaunchOnboarding();
+      unawaited(_auditPermissionsForNewVersion());
       unawaited(_checkForAppUpdate());
     });
     unawaited(_syncMissionNotificationsSafely());
