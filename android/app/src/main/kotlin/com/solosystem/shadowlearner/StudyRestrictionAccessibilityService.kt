@@ -18,7 +18,11 @@ import android.view.accessibility.AccessibilityEvent
 class StudyRestrictionAccessibilityService : AccessibilityService() {
     companion object {
         const val PREFS = "solo_system_study_restriction"
-        const val KEY_ACTIVE = "study_restriction_active"\n\n        @Volatile\n        var isConnected: Boolean = false\n            private set
+        const val KEY_ACTIVE = "study_restriction_active"
+
+        @Volatile
+        var isConnected: Boolean = false
+            private set
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -77,6 +81,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        isConnected = true
         serviceInfo = serviceInfo.apply {
             eventTypes =
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
@@ -177,7 +182,13 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(screenTimeCheck)
     }
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        isConnected = false
+        return super.onUnbind(intent)
+    }
+
     override fun onDestroy() {
+        isConnected = false
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
