@@ -159,6 +159,48 @@ void main() {
     expect(reloadedPlayer.mp, 53);
   });
 
+  test('MP is reserved at start and released without deduction on cancel', () async {
+    final player = PlayerSystem();
+    await player.loadPlayer();
+    final timer = StudyTimer();
+    await timer.loadTimer(player: player);
+
+    final started = await timer.start(
+      questId: 'test_quest',
+      durationMinutes: 15,
+      player: player,
+    );
+
+    expect(started, isTrue);
+    expect(timer.reservedMpAmount, 5);
+    expect(timer.availableMp(player), 95);
+    expect(player.mp, 100);
+
+    await timer.cancel(player: player);
+
+    expect(timer.reservedMpAmount, 0);
+    expect(timer.activeQuestId, isNull);
+    expect(player.mp, 100);
+  });
+
+  test('timer cannot reserve more MP than the player has', () async {
+    final player = PlayerSystem();
+    await player.loadPlayer();
+    await player.setMp(4);
+
+    final timer = StudyTimer();
+    await timer.loadTimer(player: player);
+    final started = await timer.start(
+      questId: 'test_quest',
+      durationMinutes: 15,
+      player: player,
+    );
+
+    expect(started, isFalse);
+    expect(timer.reservedMpAmount, 0);
+    expect(player.mp, 4);
+  });
+
   test('MP cost uses level difficulty and 15-minute blocks', () {
     final timer = StudyTimer();
 
