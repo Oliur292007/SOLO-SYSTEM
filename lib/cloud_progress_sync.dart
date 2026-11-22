@@ -32,7 +32,7 @@ class CloudProgressSync {
   static const String _cloudUpdatedKey = 'cloud_progress_updated_ms';
   static const String _lastSnapshotFingerprintKey =
       'cloud_progress_last_snapshot_fingerprint';
-  static const int schemaVersion = 3;
+  static const int schemaVersion = 4;
 
   static const Set<String> _progressKeys = {
     // Player
@@ -98,6 +98,16 @@ class CloudProgressSync {
     'solo_notification_history',
     'solo_notification_history_date',
 
+    // Legacy standalone Pomodoro keys are accepted for older cloud snapshots.
+    'pomodoro_focus_minutes',
+    'pomodoro_short_break_minutes',
+    'pomodoro_long_break_minutes',
+    'pomodoro_long_break_every',
+    'pomodoro_phase',
+    'pomodoro_remaining_seconds',
+    'pomodoro_running',
+    'pomodoro_end_time_ms',
+    'pomodoro_completed_focus_sessions',
   };
 
   final UidManager uidManager;
