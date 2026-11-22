@@ -18,7 +18,7 @@ import android.view.accessibility.AccessibilityEvent
 class StudyRestrictionAccessibilityService : AccessibilityService() {
     companion object {
         const val PREFS = "solo_system_study_restriction"
-        const val KEY_ACTIVE = "study_restriction_active"
+        const val KEY_ACTIVE = "study_restriction_active"\n\n        @Volatile\n        var isConnected: Boolean = false\n            private set
     }
 
     private val handler = Handler(Looper.getMainLooper())
