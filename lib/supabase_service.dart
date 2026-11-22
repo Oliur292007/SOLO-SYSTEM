@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_config.dart';
@@ -13,6 +14,8 @@ class SupabaseService {
   static const String _whitelistCacheKey = 'supabase_whitelist_cache';
   static const String _lastSyncKey = 'supabase_last_sync';
   static const String _cloudDeviceTokenKey = 'cloud_progress_device_token';
+  static const MethodChannel _screenTimeChannel =
+      MethodChannel('solo_system/app_restriction');
 
   // Global variable to store the last error for the UI Diagnostic
   static String? lastRegistrationError;
@@ -57,6 +60,12 @@ class SupabaseService {
   int get youtubeWarningIntervalMinutes =>
       int.tryParse(_config['youtube_warning_interval_minutes'] ?? '5') ?? 5;
 
+  int get socialMediaDailyLimitMinutes =>
+      int.tryParse(_config['social_media_daily_limit_minutes'] ?? '240') ?? 240;
+
+  int get gamesDailyLimitMinutes =>
+      int.tryParse(_config['games_daily_limit_minutes'] ?? '120') ?? 120;
+
   int get youtubeHpDamageIntervalMinutes =>
       int.tryParse(_config['youtube_hp_damage_interval_minutes'] ?? '30') ?? 30;
 
@@ -82,6 +91,7 @@ class SupabaseService {
     }
 
     await _loadCache();
+    await _syncNativeScreenTimePolicy();
     unawaited(_tryNetworkSync());
   }
 
@@ -157,6 +167,7 @@ class SupabaseService {
             .toList();
       }
 
+      await _syncNativeScreenTimePolicy();
       _isOnline = true;
       _lastSync = DateTime.now();
       await _saveCache();
@@ -187,6 +198,47 @@ class SupabaseService {
   Future<bool> forceSync() async {
     await _tryNetworkSync();
     return _isOnline;
+  }
+
+  Future<void> _syncNativeScreenTimePolicy() async {
+    final overrides = <String, String>{};
+    final allowedPackages = <String>[];
+
+    for (final entry in _whitelist) {
+      final packageName = entry['package_name']?.toString();
+      if (packageName == null || packageName.isEmpty) continue;
+
+      final protectionCategory = entry['category']?.toString();
+      if (protectionCategory == 'allowed' ||
+          protectionCategory == 'youtube_special') {
+        allowedPackages.add(packageName);
+      }
+
+      final screenTimeCategory =
+          entry['screen_time_category']?.toString();
+      if (screenTimeCategory != null &&
+          const {'social_media', 'game', 'education', 'excluded'}
+              .contains(screenTimeCategory)) {
+        overrides[packageName] = screenTimeCategory;
+      }
+    }
+
+    try {
+      await _screenTimeChannel.invokeMethod<void>(
+        'syncScreenTimeConfig',
+        {
+          'overrides': overrides,
+          'allowedPackages': allowedPackages,
+          'socialLimitMinutes': socialMediaDailyLimitMinutes,
+          'gameLimitMinutes': gamesDailyLimitMinutes,
+          'youtubeWarningIntervalMinutes': youtubeWarningIntervalMinutes,
+        },
+      );
+    } on PlatformException catch (error) {
+      debugPrint('NATIVE SCREEN TIME POLICY SYNC ERROR: ${error.message}');
+    } catch (error) {
+      debugPrint('NATIVE SCREEN TIME POLICY SYNC ERROR: $error');
+    }
   }
 
   // ============================================================
