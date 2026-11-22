@@ -47,6 +47,7 @@ class _ScreenTimePageState extends State<ScreenTimePage>
       _error = null;
     });
     try {
+      await widget.supabaseService.forceSync();
       final result = await _screenTimeChannel.invokeMapMethod<String, dynamic>(
         'getDailyUsage',
       );
