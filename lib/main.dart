@@ -369,6 +369,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
 
   void _onLocalProgressChanged() {
     _trackProgressNotifications();
+    unawaited(widget.cloudProgressSync.markLocalChange());
     widget.cloudProgressSync.scheduleSync();
   }
 
