@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../lib/player_system.dart';
+import '../lib/rest_system.dart';
 import '../lib/study_timer.dart';
 
 void main() {
@@ -98,6 +99,64 @@ void main() {
     expect(second, 0);
     expect(player.hp, 80);
     expect(player.hpDamageHistory, hasLength(1));
+  });
+
+  test('short rest grants each elapsed interval once after reload', () async {
+    final restStarted = DateTime.now()
+        .subtract(const Duration(minutes: 10))
+        .millisecondsSinceEpoch;
+    SharedPreferences.setMockInitialValues({
+      'player_hp': 50,
+      'player_mp': 40,
+      'short_rest_start': restStarted,
+      'short_rest_applied': 0,
+    });
+
+    final player = PlayerSystem();
+    await player.loadPlayer();
+    final rest = RestSystem(player: player);
+    await rest.loadRest();
+
+    expect(player.hp, 55);
+    expect(player.mp, 45);
+    rest.dispose();
+
+    final reloadedPlayer = PlayerSystem();
+    await reloadedPlayer.loadPlayer();
+    final reloadedRest = RestSystem(player: reloadedPlayer);
+    await reloadedRest.loadRest();
+
+    expect(reloadedPlayer.hp, 55);
+    expect(reloadedPlayer.mp, 45);
+    reloadedRest.dispose();
+  });
+
+  test('long rest applies hourly recovery and sleeping bonus once', () async {
+    final restStarted = DateTime.now()
+        .subtract(const Duration(hours: 1))
+        .millisecondsSinceEpoch;
+    SharedPreferences.setMockInitialValues({
+      'player_hp': 50,
+      'player_mp': 40,
+      'long_rest_start': restStarted,
+    });
+
+    final player = PlayerSystem();
+    await player.loadPlayer();
+    final rest = RestSystem(player: player);
+    await rest.loadRest();
+    await rest.endLongRest();
+
+    // 10% of 100 per hour = 10; 25% bonus rounds to 3.
+    expect(player.hp, 63);
+    expect(player.mp, 53);
+    expect(rest.isLongRestActive, isFalse);
+    rest.dispose();
+
+    final reloadedPlayer = PlayerSystem();
+    await reloadedPlayer.loadPlayer();
+    expect(reloadedPlayer.hp, 63);
+    expect(reloadedPlayer.mp, 53);
   });
 
   test('MP cost uses level difficulty and 15-minute blocks', () {
