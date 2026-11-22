@@ -225,9 +225,15 @@ class CloudProgressSync {
       final localFingerprint = _snapshotFingerprint(localSnapshot);
       final previousFingerprint =
           prefs.getString(_lastSnapshotFingerprintKey);
-      final hasOfflineLocalChanges = previousFingerprint != null &&
-          localFingerprint != previousFingerprint;
       final previousCloudMs = prefs.getInt(_cloudUpdatedKey) ?? 0;
+      final localChangedMs = prefs.getInt(_localChangedKey) ?? 0;
+
+      // A changed fingerprint alone is not proof of a user edit: a newer app
+      // version may add default preferences. Only prefer local data when a
+      // real local-change marker is newer than the last confirmed cloud copy.
+      final hasOfflineLocalChanges = previousFingerprint != null &&
+          localFingerprint != previousFingerprint &&
+          localChangedMs > previousCloudMs;
 
       final response = await client.rpc(
         'restore_player_progress',
@@ -274,7 +280,7 @@ class CloudProgressSync {
       final cloudUpdatedAt =
           DateTime.tryParse(response['updated_at']?.toString() ?? '');
       final cloudMs = cloudUpdatedAt?.millisecondsSinceEpoch ?? 0;
-      final legacyLocalChangedMs = prefs.getInt(_localChangedKey) ?? 0;
+      final legacyLocalChangedMs = localChangedMs;
 
       // Preserve local edits made while offline. For older installs that do
       // not yet have a baseline fingerprint, retain the previous timestamp
