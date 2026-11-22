@@ -35,7 +35,7 @@ jobs:
       - name: Download Shadow Learner Logo from Google Drive
         run: |
           mkdir -p assets/branding
-          python -m pip install --quiet gdown
+          python -m pip install --quiet gdown pillow
           gdown "https://drive.google.com/uc?id=1qHFzrE9r8V4zEE8r43Su1rUHsh6O872F" -O assets/branding/app_logo.png
           python - <<'PY'
           from PIL import Image
