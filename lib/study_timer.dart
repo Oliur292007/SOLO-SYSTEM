@@ -154,6 +154,7 @@ class StudyTimer extends ChangeNotifier {
     if (activeQuestId == null) {
       reservedMp = 0;
       startedAt = null;
+      _resetPomodoroState();
       await prefs.remove(_reservedMpKey);
       await prefs.remove(_startedAtKey);
     await prefs.remove(_pomodoroEnabledKey);
@@ -366,6 +367,13 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_finishedKey);
     await prefs.remove(_reservedMpKey);
     await prefs.remove(_startedAtKey);
+    await prefs.remove(_pomodoroEnabledKey);
+    await prefs.remove(_pomodoroPhaseKey);
+    await prefs.remove(_pomodoroPhaseRemainingKey);
+    await prefs.remove(_pomodoroPhaseDurationKey);
+    await prefs.remove(_pomodoroFocusAtStartKey);
+    await prefs.remove(_pomodoroSessionsKey);
+    await prefs.remove(_pomodoroRecoveryKey);
 
     await _syncNativeRestriction();
     notifyListeners();
@@ -575,6 +583,7 @@ class StudyTimer extends ChangeNotifier {
     remainingSeconds = 0;
     endTime = null;
     startedAt = null;
+    _resetPomodoroState();
 
     isRunning = false;
     isFinished = false;
@@ -590,6 +599,13 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_finishedKey);
     await prefs.remove(_reservedMpKey);
     await prefs.remove(_startedAtKey);
+    await prefs.remove(_pomodoroEnabledKey);
+    await prefs.remove(_pomodoroPhaseKey);
+    await prefs.remove(_pomodoroPhaseRemainingKey);
+    await prefs.remove(_pomodoroPhaseDurationKey);
+    await prefs.remove(_pomodoroFocusAtStartKey);
+    await prefs.remove(_pomodoroSessionsKey);
+    await prefs.remove(_pomodoroRecoveryKey);
 
     await _syncNativeRestriction();
     notifyListeners();
