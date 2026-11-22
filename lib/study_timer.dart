@@ -42,7 +42,6 @@ class StudyTimer extends ChangeNotifier {
   }
 
   Timer? _ticker;
-  PlayerSystem? _activePlayer;
 
   String? activeQuestId;
   int remainingSeconds = 0;
@@ -106,7 +105,6 @@ class StudyTimer extends ChangeNotifier {
   // ============================================================
 
   Future<void> loadTimer({PlayerSystem? player}) async {
-    _activePlayer = player;
     final prefs = await SharedPreferences.getInstance();
 
     activeQuestId = prefs.getString(_questIdKey);
