@@ -2428,6 +2428,19 @@ class QuestPage extends StatelessWidget {
                         textAlign: TextAlign.center,
                       ),
                     ),
+                    if (studyTimer.pomodoroEnabled) ...[
+                      const SizedBox(height: 6),
+                      Center(
+                        child: Text(
+                          'QUEST FOCUS TIME LEFT: ${studyTimer.focusRemainingFormatted}',
+                          style: TextStyle(
+                            color: c.muted,
+                            fontSize: 10,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     _sessionMetaRow(context, studyTimer, questSystem),
                     const SizedBox(height: 14),
@@ -2919,6 +2932,10 @@ class QuestPage extends StatelessWidget {
 
   String _activeSessionStatus(StudyTimer timer) {
     if (timer.isFinished) return 'TIMER COMPLETE — CLAIM YOUR XP';
+    if (timer.pomodoroEnabled) {
+      return timer.pomodoroPhaseLabel +
+          (timer.isPomodoroBreak ? ' • RECOVERY ACTIVE' : '');
+    }
     if (timer.isRunning) return 'FOCUS MODE ACTIVE';
     return 'PAUSED';
   }
