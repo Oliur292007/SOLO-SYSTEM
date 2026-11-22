@@ -153,7 +153,7 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
       MethodChannel('solo_system/app_restriction');
   bool _notificationsEnabled = false;
   bool _exactAlarmsEnabled = false;
-  bool _accessibilityEnabled = false;
+  bool _accessibilityEnabled = false;\n  bool _accessibilityConnected = false;
   bool _usageAccessEnabled = false;
   bool _checking = true;
 
