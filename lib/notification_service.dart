@@ -160,7 +160,7 @@ class MissionNotificationService extends ChangeNotifier {
           'solo_mission_reminders',
           'Mission Reminders',
           channelDescription:
-              'Mission reminders and important SOLO SYSTEM updates.',
+              'Mission reminders and important Shadow Learner updates.',
           importance: Importance.high,
           priority: Priority.high,
         ),
@@ -210,7 +210,7 @@ class MissionNotificationService extends ChangeNotifier {
 
   Future<void> showPermissionConfirmation() async {
     await addNotification(
-      'SOLO SYSTEM Notifications Enabled',
+      'Shadow Learner Notifications Enabled',
       'Mission reminders and system updates are active.',
       type: 'permission',
     );
@@ -265,7 +265,7 @@ class MissionNotificationService extends ChangeNotifier {
         'solo_mission_reminders',
         'Mission Reminders',
         channelDescription:
-            'Mission reminders and important SOLO SYSTEM updates.',
+            'Mission reminders and important Shadow Learner updates.',
         importance: Importance.high,
         priority: Priority.high,
       ),

@@ -23,7 +23,7 @@ class CloudSyncResult {
   const CloudSyncResult(this.status, [this.message]);
 }
 
-/// Synchronizes only known SOLO SYSTEM progress preferences.
+/// Synchronizes only known Shadow Learner progress preferences.
 /// Account credentials, device tokens, app settings and service caches are
 /// deliberately excluded from cloud snapshots.
 class CloudProgressSync {
