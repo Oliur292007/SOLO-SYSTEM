@@ -175,23 +175,35 @@ object ScreenTimePolicy {
                 when (event.eventType) {
                     android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED,
                     android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND -> {
-                        activeSince[packageName] = event.timeStamp
+                        // Keep the first open foreground timestamp until the matching
+                        // background event; duplicate foreground events must not reset it.
+                        if (!activeSince.containsKey(packageName)) {
+                            activeSince[packageName] = event.timeStamp
+                        }
                     }
                     android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED,
                     android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND -> {
                         val foregroundStart = activeSince.remove(packageName)
-                        if (foregroundStart != null && event.timeStamp >= foregroundStart) {
-                            totals[packageName] = (totals[packageName] ?: 0L) +
-                                (event.timeStamp - maxOf(foregroundStart, start))
+                        if (foregroundStart != null) {
+                            // Clip the session to today's local window. A session that
+                            // ended before midnight contributes exactly zero, never negative.
+                            val clippedStart = maxOf(foregroundStart, start)
+                            val clippedEnd = minOf(event.timeStamp, now)
+                            if (clippedEnd > clippedStart) {
+                                totals[packageName] = (totals[packageName] ?: 0L) +
+                                    (clippedEnd - clippedStart)
+                            }
                         }
                     }
                 }
             }
 
             activeSince.forEach { (packageName, foregroundStart) ->
-                if (now >= foregroundStart) {
+                val clippedStart = maxOf(foregroundStart, start)
+                val clippedEnd = now
+                if (clippedEnd > clippedStart) {
                     totals[packageName] = (totals[packageName] ?: 0L) +
-                        (now - maxOf(foregroundStart, start))
+                        (clippedEnd - clippedStart)
                 }
             }
             totals
