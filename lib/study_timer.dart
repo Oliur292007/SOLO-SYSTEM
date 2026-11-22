@@ -167,16 +167,30 @@ class StudyTimer extends ChangeNotifier {
     }
 
     if (isRunning && endTime != null && pomodoroEnabled) {
-      phaseRemainingSeconds = ((endTime! - DateTime.now().millisecondsSinceEpoch) / 1000).ceil().clamp(0, phaseDurationSeconds);
-      if (pomodoroPhase == 'focus') {
-        remainingSeconds = (focusRemainingAtPhaseStart - (phaseDurationSeconds - phaseRemainingSeconds)).clamp(0, focusRemainingAtPhaseStart);
-      } else {
-        await _applyPomodoroRecovery(player);
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      var transitions = 0;
+      while (isRunning &&
+          endTime != null &&
+          endTime! <= nowMs &&
+          transitions < 200) {
+        phaseRemainingSeconds = 0;
+        if (isPomodoroBreak) await _applyPomodoroRecovery(player);
+        final completedAt = endTime!;
+        await _finishPomodoroPhase(phaseEndAnchorMs: completedAt);
+        transitions++;
       }
-      if (phaseRemainingSeconds <= 0) {
-        await _finishPomodoroPhase();
-        if (isRunning) _startTicker();
-      } else {
+
+      if (isRunning && endTime != null) {
+        phaseRemainingSeconds = ((endTime! - nowMs) / 1000)
+            .ceil()
+            .clamp(0, phaseDurationSeconds);
+        if (pomodoroPhase == 'focus') {
+          remainingSeconds = (focusRemainingAtPhaseStart -
+                  (phaseDurationSeconds - phaseRemainingSeconds))
+              .clamp(0, focusRemainingAtPhaseStart);
+        } else {
+          await _applyPomodoroRecovery(player);
+        }
         _startTicker();
       }
     } else if (isRunning && endTime != null) {
@@ -456,7 +470,7 @@ class StudyTimer extends ChangeNotifier {
     await _saveTimer();
   }
 
-  Future<void> _finishPomodoroPhase() async {
+  Future<void> _finishPomodoroPhase({int? phaseEndAnchorMs}) async {
     if (pomodoroPhase == 'focus') {
       remainingSeconds = (focusRemainingAtPhaseStart - phaseDurationSeconds).clamp(0, focusRemainingAtPhaseStart);
       completedFocusSessions++;
@@ -483,7 +497,8 @@ class StudyTimer extends ChangeNotifier {
       focusRemainingAtPhaseStart = remainingSeconds;
       recoveryIntervalsApplied = 0;
     }
-    endTime = DateTime.now().add(Duration(seconds: phaseRemainingSeconds)).millisecondsSinceEpoch;
+    final phaseAnchor = phaseEndAnchorMs ?? DateTime.now().millisecondsSinceEpoch;
+    endTime = phaseAnchor + (phaseRemainingSeconds * 1000);
     isRunning = true;
     await _saveTimer();
     await _syncNativeRestriction();
