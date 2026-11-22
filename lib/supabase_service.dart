@@ -68,11 +68,13 @@ class SupabaseService {
   // ============================================================
 
   Future<void> initialize() async {
+    // Initialize the local Supabase client only. Network RPCs are deliberately
+    // deferred so a slow/offline connection cannot block the first app frame.
     try {
       await Supabase.initialize(
         url: SupabaseConfig.supabaseUrl,
         publishableKey: SupabaseConfig.publishableKey,
-      );
+      ).timeout(const Duration(seconds: 8));
       _client = Supabase.instance.client;
     } catch (e) {
       debugPrint('Supabase init failed: $e');
@@ -80,7 +82,7 @@ class SupabaseService {
     }
 
     await _loadCache();
-    await _tryNetworkSync();
+    unawaited(_tryNetworkSync());
   }
 
   // ============================================================
