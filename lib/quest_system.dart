@@ -426,8 +426,9 @@ class QuestSystem extends ChangeNotifier {
   Future<void> _applyMissDamage(
     PlayerSystem player,
     double basePercent,
-    String reason,
-  ) async {
+    String reason, {
+    required String eventId,
+  }) async {
     if (player.hp <= 0) return;
 
     final levelMultiplier = 1.0 + ((player.level - 1) * 0.05);
@@ -438,7 +439,7 @@ class QuestSystem extends ChangeNotifier {
     );
     final damage = cappedDamage.round();
 
-    await player.applyHpDamage(damage, reason: reason);
+    await player.applyHpDamageOnce(eventId, damage, reason: reason);
   }
 
   // ============================================================
@@ -976,6 +977,7 @@ class QuestSystem extends ChangeNotifier {
             player,
             _sleepingMissPercent,
             'Sleeping Missed',
+            eventId: 'miss:sleeping:${quest.deadline!.millisecondsSinceEpoch}',
           );
 
           _maybeApplyHpCriticalPenalty(player);
@@ -995,6 +997,7 @@ class QuestSystem extends ChangeNotifier {
             player,
             _wakeupMissPercent,
             'Wakeup Missed',
+            eventId: 'miss:wakeup:${quest.deadline!.millisecondsSinceEpoch}',
           );
 
           _maybeApplyHpCriticalPenalty(player);
@@ -1010,6 +1013,7 @@ class QuestSystem extends ChangeNotifier {
           player,
           _mandatoryMissPercent,
           'Mission Missed: ${quest.name}',
+          eventId: 'miss:${quest.id}:${quest.deadline!.millisecondsSinceEpoch}',
         );
 
         _maybeApplyHpCriticalPenalty(player);
@@ -1101,6 +1105,7 @@ class QuestSystem extends ChangeNotifier {
             player,
             _sleepingMissPercent,
             'Sleeping Missed (previous day)',
+            eventId: 'miss:sleeping:${deadline.millisecondsSinceEpoch}',
           );
           _maybeApplyHpCriticalPenalty(player);
           continue;
@@ -1114,6 +1119,7 @@ class QuestSystem extends ChangeNotifier {
             player,
             _wakeupMissPercent,
             'Wakeup Missed (previous day)',
+            eventId: 'miss:wakeup:${deadline.millisecondsSinceEpoch}',
           );
           _maybeApplyHpCriticalPenalty(player);
           continue;
@@ -1124,6 +1130,7 @@ class QuestSystem extends ChangeNotifier {
           player,
           _mandatoryMissPercent,
           'Mission Missed (previous day)',
+          eventId: 'miss:$id:${deadline.millisecondsSinceEpoch}',
         );
         _maybeApplyHpCriticalPenalty(player);
       }
