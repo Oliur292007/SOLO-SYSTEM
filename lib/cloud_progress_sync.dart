@@ -67,6 +67,13 @@ class CloudProgressSync {
     'timer_finished',
     'timer_reserved_mp',
     'timer_started_at',
+    'quest_pomodoro_enabled',
+    'quest_pomodoro_phase',
+    'quest_pomodoro_phase_remaining',
+    'quest_pomodoro_phase_duration',
+    'quest_pomodoro_focus_at_start',
+    'quest_pomodoro_sessions',
+    'quest_pomodoro_recovery_applied',
 
     // Timetable, rest and weekly special mission
     'study_timetable',
@@ -91,16 +98,6 @@ class CloudProgressSync {
     'solo_notification_history',
     'solo_notification_history_date',
 
-    // Pomodoro timer, settings and completed-session count
-    'pomodoro_focus_minutes',
-    'pomodoro_short_break_minutes',
-    'pomodoro_long_break_minutes',
-    'pomodoro_long_break_every',
-    'pomodoro_phase',
-    'pomodoro_remaining_seconds',
-    'pomodoro_running',
-    'pomodoro_end_time_ms',
-    'pomodoro_completed_focus_sessions',
   };
 
   final UidManager uidManager;
