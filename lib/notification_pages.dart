@@ -153,7 +153,8 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
       MethodChannel('solo_system/app_restriction');
   bool _notificationsEnabled = false;
   bool _exactAlarmsEnabled = false;
-  bool _accessibilityEnabled = false;\n  bool _accessibilityConnected = false;
+  bool _accessibilityEnabled = false;
+  bool _accessibilityConnected = false;
   bool _usageAccessEnabled = false;
   bool _checking = true;
 
@@ -181,10 +182,15 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
     final exactAlarms =
         await widget.notificationService.canScheduleExactNotifications();
     bool accessibility = false;
+    bool accessibilityConnected = false;
     bool usageAccess = false;
     try {
       accessibility =
           await _channel.invokeMethod<bool>('isAccessibilityEnabled') ?? false;
+    } catch (_) {}
+    try {
+      accessibilityConnected =
+          await _channel.invokeMethod<bool>('isAccessibilityServiceConnected') ?? false;
     } catch (_) {}
     try {
       usageAccess =
@@ -195,6 +201,7 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
       _notificationsEnabled = notifications;
       _exactAlarmsEnabled = exactAlarms;
       _accessibilityEnabled = accessibility;
+      _accessibilityConnected = accessibilityConnected;
       _usageAccessEnabled = usageAccess;
       _checking = false;
     });
@@ -282,8 +289,12 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
           _permissionTile(
             icon: Icons.accessibility_new,
             title: 'Accessibility / Study App Protection',
-            subtitle: 'Required to restrict other apps during an active mission timer',
-            enabled: _accessibilityEnabled,
+            subtitle: !_accessibilityEnabled
+                ? 'Disabled in Android Accessibility Settings'
+                : !_accessibilityConnected
+                    ? 'Enabled, but service is not connected. Reopen Accessibility Settings and switch it off/on.'
+                    : 'Enabled and connected — ready to restrict other apps during an active mission timer',
+            enabled: _accessibilityEnabled && _accessibilityConnected,
             onTap: () => _open('openAccessibilitySettings'),
           ),
           _permissionTile(
