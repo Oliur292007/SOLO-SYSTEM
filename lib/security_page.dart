@@ -74,7 +74,6 @@ class _SecurityPageState extends State<SecurityPage> {
       context: context,
       controller: widget.controller,
       uidManager: widget.uidManager,
-      supabaseService: widget.supabaseService,
     );
   }
 
@@ -99,11 +98,11 @@ class _SecurityPageState extends State<SecurityPage> {
         content: const SingleChildScrollView(
           child: Text(
             'Study App Protection must be enabled manually in Android. Follow each step in order:\n\n'
-            '1. Tap OPEN ACCESSIBILITY below. Find SOLO SYSTEM. If Android does not let you enable it yet, return to the Home Screen.\n\n'
-            '2. Press and hold the SOLO SYSTEM app icon, then tap App info.\n\n'
+            '1. Tap OPEN ACCESSIBILITY below. Find Shadow Learner. If Android does not let you enable it yet, return to the Home Screen.\n\n'
+            '2. Press and hold the Shadow Learner app icon, then tap App info.\n\n'
             '3. Tap the three-dot menu in the top-right corner. Choose Allow restricted settings and confirm. If this option is not shown, complete Step 1 first.\n\n'
-            '4. Open SOLO SYSTEM again and return to Security > Set Up Study App Protection.\n\n'
-            '5. Open SOLO SYSTEM in Accessibility Settings, switch on the service, read the Android warning, and confirm if you agree.\n\n'
+            '4. Open Shadow Learner again and return to Security > Set Up Study App Protection.\n\n'
+            '5. Open Shadow Learner in Accessibility Settings, switch on the service, read the Android warning, and confirm if you agree.\n\n'
             'When the mission timer is running, the service can return you to the Home Screen if you try to open another app. It does not permanently lock or uninstall apps. You can disable the service in Android Accessibility Settings.',
           ),
         ),
@@ -339,7 +338,7 @@ class _SecurityPageState extends State<SecurityPage> {
                 const SizedBox(height: 6),
                 Text(
                   isRegistered
-                      ? 'Registered with SOLO SYSTEM servers.'
+                      ? 'Registered with Shadow Learner servers.'
                       : 'Not registered — connect to internet.',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.7),
@@ -464,7 +463,7 @@ class _SecurityPageState extends State<SecurityPage> {
                 _InfoStep(
                   colors: c,
                   number: '2',
-                  text: 'Send the matching GIVE command to the SOLO SYSTEM Telegram Bot from your linked Telegram account.',
+                  text: 'Open the Shadow Learner companion bot and press the matching code-request button. Your saved UID is used automatically.',
                 ),
                 _InfoStep(
                   colors: c,
@@ -508,7 +507,7 @@ class _SecurityPageState extends State<SecurityPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Use the SOLO SYSTEM Telegram Bot from the Telegram account linked to this UID. Code requests require developer approval and are delivered privately by the Bot.',
+                    'Use the Shadow Learner companion bot from the Telegram account linked to this UID. Press Emergency Unlock or Uninstall Authorization; no UID or command needs to be typed. Code requests require Solo System administrator approval and are delivered privately by the bot.',
                     style: TextStyle(color: c.text, fontSize: 12, height: 1.45),
                   ),
                 ),

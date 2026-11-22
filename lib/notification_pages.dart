@@ -291,9 +291,9 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
                   title: const Text('ALLOW RESTRICTED SETTINGS'),
                   content: const Text(
                     '1. Open Accessibility Settings once.\n\n'
-                    '2. Return to the Home Screen and long-press SOLO SYSTEM. Open App info.\n\n'
+                    '2. Return to the Home Screen and long-press Shadow Learner. Open App info.\n\n'
                     '3. Tap the three-dot menu (⋮) and choose Allow restricted settings.\n\n'
-                    '4. Return to SOLO SYSTEM > Settings > Permissions, then enable Accessibility.',
+                    '4. Return to Shadow Learner > Settings > Permissions, then enable Accessibility.',
                   ),
                   actions: [
                     TextButton(
