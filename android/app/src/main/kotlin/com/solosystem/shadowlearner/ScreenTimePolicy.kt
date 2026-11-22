@@ -206,21 +206,39 @@ object ScreenTimePolicy {
         )
     }
 
+    /**
+     * Limits apply to the whole category, not separately to each app.
+     * estimatedCurrentPackageUsageMs lets the accessibility service include
+     * the current foreground session before UsageStatsManager publishes it.
+     */
     fun limitReachedForUsage(
         context: Context,
         packageName: String,
-        usedMs: Long
+        estimatedCurrentPackageUsageMs: Long,
+        usage: Map<String, Long> = usageByPackage(context)
     ): Boolean {
-        val limitMinutes = when (categoryFor(context, packageName)) {
+        val category = categoryFor(context, packageName)
+        val limitMinutes = when (category) {
             "social_media" -> socialLimitMinutes(context)
             "game" -> gameLimitMinutes(context)
             else -> return false
         }
-        return usedMs >= limitMinutes * 60_000L
+        val categoryUsageMs = usage.entries
+            .filter { categoryFor(context, it.key) == category }
+            .sumOf { it.value }
+        val reportedCurrentUsageMs = usage[packageName] ?: 0L
+        val unreportedCurrentSessionMs =
+            (estimatedCurrentPackageUsageMs - reportedCurrentUsageMs).coerceAtLeast(0L)
+        return categoryUsageMs + unreportedCurrentSessionMs >= limitMinutes * 60_000L
     }
 
     fun isLimitReached(context: Context, packageName: String): Boolean {
-        val usedMs = usageByPackage(context)[packageName] ?: 0L
-        return limitReachedForUsage(context, packageName, usedMs)
+        val usage = usageByPackage(context)
+        return limitReachedForUsage(
+            context,
+            packageName,
+            usage[packageName] ?: 0L,
+            usage
+        )
     }
 }
