@@ -44,6 +44,14 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             }
             lastUsageTickElapsed = nowElapsed
 
+            val studyActive = getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getBoolean(KEY_ACTIVE, false)
+            if (packageName == "com.google.android.youtube" && studyActive) {
+                startYouTubeWarnings()
+            } else {
+                stopYouTubeWarnings()
+            }
+
             if (packageName != null && !isSystemAllowedPackage(packageName)) {
                 val reportedUsage = ScreenTimePolicy.usageByPackage(
                     this@StudyRestrictionAccessibilityService
