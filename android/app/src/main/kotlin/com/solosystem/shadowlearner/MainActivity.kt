@@ -61,7 +61,8 @@ class MainActivity : FlutterActivity() {
                     }
                     "isAccessibilityServiceConnected" -> result.success(
                         StudyRestrictionAccessibilityService.isConnected
-                    )\n                    "isAccessibilityEnabled" -> {
+                    )
+                    "isAccessibilityEnabled" -> {
                         val serviceComponent = ComponentName(
                             this,
                             StudyRestrictionAccessibilityService::class.java
