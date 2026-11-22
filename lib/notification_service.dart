@@ -181,25 +181,25 @@ class MissionNotificationService extends ChangeNotifier {
     required String title,
     required String body,
   }) async {
-    if (!_initialized) await initialize();
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    final enabled = android == null ||
-        (await android.areNotificationsEnabled() ?? false);
-    if (!enabled) return;
-
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'solo_pomodoro_timer',
-        'Pomodoro Timer',
-        channelDescription: 'Focus and break session completion alerts.',
-        importance: Importance.high,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
-    );
-    final exactAllowed = await canScheduleExactNotifications();
     try {
+      if (!_initialized) await initialize();
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final enabled = android == null ||
+          (await android.areNotificationsEnabled() ?? false);
+      if (!enabled) return;
+
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'solo_pomodoro_timer',
+          'Pomodoro Timer',
+          channelDescription: 'Focus and break session completion alerts.',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      );
+      final exactAllowed = await canScheduleExactNotifications();
       await _plugin.zonedSchedule(
         _pomodoroNotificationId,
         title,
@@ -218,8 +218,12 @@ class MissionNotificationService extends ChangeNotifier {
   }
 
   Future<void> cancelPomodoroEnd() async {
-    if (!_initialized) await initialize();
-    await _plugin.cancel(_pomodoroNotificationId);
+    try {
+      if (!_initialized) await initialize();
+      await _plugin.cancel(_pomodoroNotificationId);
+    } catch (error) {
+      debugPrint('POMODORO NOTIFICATION CANCEL ERROR: $error');
+    }
   }
 
   Future<void> clearHistory() async {
