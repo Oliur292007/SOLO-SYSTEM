@@ -480,6 +480,36 @@ class CloudProgressSync {
           throw FormatException('Unsupported value for $key.');
         }
       }
+
+      // Migrate backups created before the combined HP/MP event ledger existed.
+      // Otherwise an older cloud snapshot could restore scalar HP/MP while a
+      // stale local combined snapshot silently overrode those values on reload.
+      if (!remote.containsKey('player_vitals_state') &&
+          (remote.containsKey('player_hp') || remote.containsKey('player_mp'))) {
+        final currentRaw = prefs.getString('player_vitals_state');
+        var appliedEvents = <String>[];
+        if (currentRaw != null && currentRaw.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(currentRaw);
+            if (decoded is Map) {
+              final events = decoded['applied_events'];
+              if (events is List) {
+                appliedEvents = events.whereType<String>().toList();
+              }
+            }
+          } catch (_) {
+            appliedEvents = <String>[];
+          }
+        }
+        await prefs.setString(
+          'player_vitals_state',
+          jsonEncode({
+            'hp': prefs.getInt('player_hp') ?? 100,
+            'mp': prefs.getInt('player_mp') ?? 100,
+            'applied_events': appliedEvents,
+          }),
+        );
+      }
     } finally {
       _isApplyingRemote = false;
     }
