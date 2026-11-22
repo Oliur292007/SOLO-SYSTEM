@@ -175,6 +175,7 @@ class StudyTimer extends ChangeNotifier {
       }
       if (phaseRemainingSeconds <= 0) {
         await _finishPomodoroPhase();
+        if (isRunning) _startTicker();
       } else {
         _startTicker();
       }
@@ -269,6 +270,16 @@ class StudyTimer extends ChangeNotifier {
     if (pomodoroEnabled) {
       _updatePomodoroPhaseRemaining();
       if (isPomodoroBreak) await _applyPomodoroRecovery(_activePlayer);
+      if (phaseRemainingSeconds <= 0) {
+        await _finishPomodoroPhase();
+        if (isFinished) {
+          _ticker?.cancel();
+          _ticker = null;
+          notifyListeners();
+          return;
+        }
+        _updatePomodoroPhaseRemaining();
+      }
     } else {
       _updateRemaining();
     }
