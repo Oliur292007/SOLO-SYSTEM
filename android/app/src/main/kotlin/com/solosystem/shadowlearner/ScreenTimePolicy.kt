@@ -78,6 +78,10 @@ object ScreenTimePolicy {
     }
 
     fun categoryFor(context: Context, packageName: String): String {
+        if (packageName == "com.google.android.youtube" ||
+            packageName.contains("youtube", ignoreCase = true)
+        ) return "youtube_special"
+
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val overrides = runCatching {
             JSONObject(prefs.getString(KEY_OVERRIDES, "{}") ?: "{}")
@@ -86,9 +90,6 @@ object ScreenTimePolicy {
         if (override in setOf("social_media", "game", "education", "excluded")) {
             return override
         }
-        if (packageName == "com.google.android.youtube" ||
-            packageName.contains("youtube", ignoreCase = true)
-        ) return "youtube_special"
 
         val lower = packageName.lowercase()
         if (lower in SOCIAL_PACKAGES || SOCIAL_PACKAGES.any { lower.contains(it) }) {
