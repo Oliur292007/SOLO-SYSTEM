@@ -1,4 +1,4 @@
-package com.example.solo_system
+package com.oliur.solosystem.solo_system
 
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent

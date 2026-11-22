@@ -32,6 +32,9 @@ jobs:
         run: |
           test -f android/app/src/main/kotlin/com/example/solo_system/MainActivity.kt
           test -f android/app/src/main/kotlin/com/example/solo_system/StudyRestrictionAccessibilityService.kt
+          grep -q 'namespace = "com.oliur.solosystem.solo_system"' android/app/build.gradle.kts
+          grep -q 'applicationId = "com.oliur.solosystem.solo_system"' android/app/build.gradle.kts
+          grep -q 'package com.oliur.solosystem.solo_system' android/app/src/main/kotlin/com/example/solo_system/MainActivity.kt
           grep -q 'SCHEDULE_EXACT_ALARM' android/app/src/main/AndroidManifest.xml
           grep -q 'ScheduledNotificationBootReceiver' android/app/src/main/AndroidManifest.xml
 

@@ -1,4 +1,4 @@
-package com.example.solo_system
+package com.oliur.solosystem.solo_system
 
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
