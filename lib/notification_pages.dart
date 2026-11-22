@@ -154,6 +154,7 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
   bool _notificationsEnabled = false;
   bool _exactAlarmsEnabled = false;
   bool _accessibilityEnabled = false;
+  bool _usageAccessEnabled = false;
   bool _checking = true;
 
   @override
@@ -180,15 +181,21 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
     final exactAlarms =
         await widget.notificationService.canScheduleExactNotifications();
     bool accessibility = false;
+    bool usageAccess = false;
     try {
       accessibility =
           await _channel.invokeMethod<bool>('isAccessibilityEnabled') ?? false;
+    } catch (_) {}
+    try {
+      usageAccess =
+          await _channel.invokeMethod<bool>('hasUsageAccess') ?? false;
     } catch (_) {}
     if (!mounted) return;
     setState(() {
       _notificationsEnabled = notifications;
       _exactAlarmsEnabled = exactAlarms;
       _accessibilityEnabled = accessibility;
+      _usageAccessEnabled = usageAccess;
       _checking = false;
     });
   }
@@ -278,6 +285,13 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
             subtitle: 'Required to restrict other apps during an active mission timer',
             enabled: _accessibilityEnabled,
             onTap: () => _open('openAccessibilitySettings'),
+          ),
+          _permissionTile(
+            icon: Icons.query_stats,
+            title: 'App Usage Access / Screen Time',
+            subtitle: 'Required to read today’s app usage and calculate daily Screen Time',
+            enabled: _usageAccessEnabled,
+            onTap: () => _open('openUsageAccessSettings'),
           ),
           Card(
             child: ListTile(
