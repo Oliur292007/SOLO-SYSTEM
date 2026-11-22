@@ -15,13 +15,6 @@ class StudyTimer extends ChangeNotifier {
   static const String _finishedKey = 'timer_finished';
   static const String _reservedMpKey = 'timer_reserved_mp';
   static const String _startedAtKey = 'timer_started_at';
-  static const String _pomodoroEnabledKey = 'quest_pomodoro_enabled';
-  static const String _pomodoroPhaseKey = 'quest_pomodoro_phase';
-  static const String _pomodoroPhaseRemainingKey = 'quest_pomodoro_phase_remaining';
-  static const String _pomodoroPhaseDurationKey = 'quest_pomodoro_phase_duration';
-  static const String _pomodoroFocusAtStartKey = 'quest_pomodoro_focus_at_start';
-  static const String _pomodoroSessionsKey = 'quest_pomodoro_sessions';
-  static const String _pomodoroRecoveryKey = 'quest_pomodoro_recovery_applied';
 
   /// Cancel damage applies only if elapsed session ≥ this threshold.
   static const Duration _cancelDamageThreshold = Duration(minutes: 5);
@@ -39,7 +32,7 @@ class StudyTimer extends ChangeNotifier {
     try {
       await _restrictionChannel.invokeMethod<void>(
         'setStudyRestriction',
-        {'active': isRunning && !isPomodoroBreak},
+        {'active': isRunning},
       );
     } on PlatformException catch (error) {
       debugPrint('APP RESTRICTION SYNC ERROR: ${error.message}');
@@ -50,23 +43,6 @@ class StudyTimer extends ChangeNotifier {
 
   Timer? _ticker;
   PlayerSystem? _activePlayer;
-
-  bool pomodoroEnabled = false;
-  String pomodoroPhase = 'focus';
-  int phaseRemainingSeconds = 0;
-  int phaseDurationSeconds = 0;
-  int focusRemainingAtPhaseStart = 0;
-  int completedFocusSessions = 0;
-  int recoveryIntervalsApplied = 0;
-
-  bool get isPomodoroBreak => pomodoroEnabled && (pomodoroPhase == 'short_break' || pomodoroPhase == 'long_break');
-  String get pomodoroPhaseLabel => !pomodoroEnabled ? '' : pomodoroPhase == 'short_break' ? 'SHORT BREAK' : pomodoroPhase == 'long_break' ? 'LONG BREAK' : 'FOCUS SESSION ' + ((completedFocusSessions % 4) + 1).toString() + '/4';
-  int get displayedSeconds => isPomodoroBreak ? phaseRemainingSeconds : remainingSeconds;
-  String get focusRemainingFormatted {
-    final minutes = (remainingSeconds ~/ 60).toString().padLeft(2, '0');
-    final seconds = (remainingSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
 
   String? activeQuestId;
   int remainingSeconds = 0;
@@ -119,7 +95,7 @@ class StudyTimer extends ChangeNotifier {
   }
 
   String get formattedTime {
-    final display = displayedSeconds;
+    final display = remainingSeconds;
     final minutes = (display ~/ 60).toString().padLeft(2, '0');
     final seconds = (display % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
@@ -140,13 +116,6 @@ class StudyTimer extends ChangeNotifier {
     isFinished = prefs.getBool(_finishedKey) ?? false;
 
     reservedMp = prefs.getInt(_reservedMpKey) ?? 0;
-    pomodoroEnabled = prefs.getBool(_pomodoroEnabledKey) ?? false;
-    pomodoroPhase = prefs.getString(_pomodoroPhaseKey) ?? 'focus';
-    phaseRemainingSeconds = prefs.getInt(_pomodoroPhaseRemainingKey) ?? 0;
-    phaseDurationSeconds = prefs.getInt(_pomodoroPhaseDurationKey) ?? 0;
-    focusRemainingAtPhaseStart = prefs.getInt(_pomodoroFocusAtStartKey) ?? remainingSeconds;
-    completedFocusSessions = prefs.getInt(_pomodoroSessionsKey) ?? 0;
-    recoveryIntervalsApplied = prefs.getInt(_pomodoroRecoveryKey) ?? 0;
 
     final startedMs = prefs.getInt(_startedAtKey);
     startedAt = startedMs != null
@@ -156,46 +125,11 @@ class StudyTimer extends ChangeNotifier {
     if (activeQuestId == null) {
       reservedMp = 0;
       startedAt = null;
-      _resetPomodoroState();
       await prefs.remove(_reservedMpKey);
       await prefs.remove(_startedAtKey);
-    await prefs.remove(_pomodoroEnabledKey);
-    await prefs.remove(_pomodoroPhaseKey);
-    await prefs.remove(_pomodoroPhaseRemainingKey);
-    await prefs.remove(_pomodoroPhaseDurationKey);
-    await prefs.remove(_pomodoroFocusAtStartKey);
-    await prefs.remove(_pomodoroSessionsKey);
-    await prefs.remove(_pomodoroRecoveryKey);
     }
 
-    if (isRunning && endTime != null && pomodoroEnabled) {
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
-      var transitions = 0;
-      while (isRunning &&
-          endTime != null &&
-          endTime! <= nowMs &&
-          transitions < 200) {
-        phaseRemainingSeconds = 0;
-        if (isPomodoroBreak) await _applyPomodoroRecovery(player);
-        final completedAt = endTime!;
-        await _finishPomodoroPhase(phaseEndAnchorMs: completedAt);
-        transitions++;
-      }
-
-      if (isRunning && endTime != null) {
-        phaseRemainingSeconds = ((endTime! - nowMs) / 1000)
-            .ceil()
-            .clamp(0, phaseDurationSeconds);
-        if (pomodoroPhase == 'focus') {
-          remainingSeconds = (focusRemainingAtPhaseStart -
-                  (phaseDurationSeconds - phaseRemainingSeconds))
-              .clamp(0, focusRemainingAtPhaseStart);
-        } else {
-          await _applyPomodoroRecovery(player);
-        }
-        _startTicker();
-      }
-    } else if (isRunning && endTime != null) {
+    if (isRunning && endTime != null) {
       _updateRemaining();
       if (remainingSeconds <= 0) {
         remainingSeconds = 0;
@@ -249,19 +183,12 @@ class StudyTimer extends ChangeNotifier {
     reservedMp = mpCost;
 
     remainingSeconds = durationMinutes * 60;
-    pomodoroEnabled = durationMinutes > 30;
-    pomodoroPhase = 'focus';
-    completedFocusSessions = 0;
-    recoveryIntervalsApplied = 0;
-    focusRemainingAtPhaseStart = remainingSeconds;
-    phaseDurationSeconds = pomodoroEnabled ? (25 * 60).clamp(0, remainingSeconds) : remainingSeconds;
-    phaseRemainingSeconds = phaseDurationSeconds;
 
     final now = DateTime.now();
     startedAt = now;
 
     endTime = now
-        .add(Duration(seconds: pomodoroEnabled ? phaseRemainingSeconds : remainingSeconds))
+        .add(Duration(seconds: remainingSeconds))
         .millisecondsSinceEpoch;
 
     isRunning = true;
@@ -286,22 +213,7 @@ class StudyTimer extends ChangeNotifier {
   Future<void> pause() async {
     if (!isRunning) return;
 
-    if (pomodoroEnabled) {
-      _updatePomodoroPhaseRemaining();
-      if (isPomodoroBreak) await _applyPomodoroRecovery(_activePlayer);
-      if (phaseRemainingSeconds <= 0) {
-        await _finishPomodoroPhase();
-        if (isFinished) {
-          _ticker?.cancel();
-          _ticker = null;
-          notifyListeners();
-          return;
-        }
-        _updatePomodoroPhaseRemaining();
-      }
-    } else {
-      _updateRemaining();
-    }
+    _updateRemaining();
     _ticker?.cancel();
     _ticker = null;
 
@@ -325,11 +237,10 @@ class StudyTimer extends ChangeNotifier {
   Future<void> resume() async {
     if (!isLoaded) return;
     if (isRunning || activeQuestId == null) return;
-    if ((!pomodoroEnabled && remainingSeconds <= 0) || isFinished) return;
-    if (pomodoroEnabled && phaseRemainingSeconds <= 0) return;
+    if (remainingSeconds <= 0 || isFinished) return;
 
     endTime = DateTime.now()
-        .add(Duration(seconds: pomodoroEnabled ? phaseRemainingSeconds : remainingSeconds))
+        .add(Duration(seconds: remainingSeconds))
         .millisecondsSinceEpoch;
 
     isRunning = true;
@@ -383,7 +294,6 @@ class StudyTimer extends ChangeNotifier {
     remainingSeconds = 0;
     endTime = null;
     startedAt = null;
-    _resetPomodoroState();
 
     isRunning = false;
     isFinished = false;
@@ -399,13 +309,6 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_finishedKey);
     await prefs.remove(_reservedMpKey);
     await prefs.remove(_startedAtKey);
-    await prefs.remove(_pomodoroEnabledKey);
-    await prefs.remove(_pomodoroPhaseKey);
-    await prefs.remove(_pomodoroPhaseRemainingKey);
-    await prefs.remove(_pomodoroPhaseDurationKey);
-    await prefs.remove(_pomodoroFocusAtStartKey);
-    await prefs.remove(_pomodoroSessionsKey);
-    await prefs.remove(_pomodoroRecoveryKey);
 
     await _syncNativeRestriction();
     notifyListeners();
@@ -422,11 +325,6 @@ class StudyTimer extends ChangeNotifier {
       const Duration(seconds: 1),
       (_) async {
         if (!isRunning) return;
-        if (pomodoroEnabled) {
-          await _tickPomodoro();
-          notifyListeners();
-          return;
-        }
         _updateRemaining();
 
         if (remainingSeconds <= 0) {
@@ -443,86 +341,6 @@ class StudyTimer extends ChangeNotifier {
         notifyListeners();
       },
     );
-  }
-
-  void _updatePomodoroPhaseRemaining() {
-    if (endTime == null) return;
-    phaseRemainingSeconds = ((endTime! - DateTime.now().millisecondsSinceEpoch) / 1000).ceil().clamp(0, phaseDurationSeconds);
-    if (pomodoroPhase == 'focus') {
-      remainingSeconds = (focusRemainingAtPhaseStart - (phaseDurationSeconds - phaseRemainingSeconds)).clamp(0, focusRemainingAtPhaseStart);
-    }
-  }
-
-  Future<void> _tickPomodoro() async {
-    _updatePomodoroPhaseRemaining();
-    if (isPomodoroBreak) await _applyPomodoroRecovery(_activePlayer);
-    if (phaseRemainingSeconds <= 0) {
-      await _finishPomodoroPhase();
-    } else {
-      await _saveTimer();
-    }
-  }
-
-  Future<void> _applyPomodoroRecovery(PlayerSystem? player) async {
-    if (player == null || !player.isLoaded || !isPomodoroBreak) return;
-    final elapsed = phaseDurationSeconds - phaseRemainingSeconds;
-    final interval = pomodoroPhase == 'short_break' ? 150 : 180;
-    final maximum = pomodoroPhase == 'short_break' ? 2 : 5;
-    final earned = (elapsed ~/ interval).clamp(0, maximum);
-    final pending = earned - recoveryIntervalsApplied;
-    if (pending <= 0) return;
-    final sessionKey = startedAt?.millisecondsSinceEpoch ?? (endTime ?? 0);
-    await player.recoverVitalsOnce(
-      'pomodoro:$activeQuestId:$sessionKey:$pomodoroPhase:$completedFocusSessions:$earned',
-      hpAmount: pending,
-      mpAmount: pending,
-    );
-    recoveryIntervalsApplied = earned;
-    await _saveTimer();
-  }
-
-  Future<void> _finishPomodoroPhase({int? phaseEndAnchorMs}) async {
-    if (pomodoroPhase == 'focus') {
-      remainingSeconds = (focusRemainingAtPhaseStart - phaseDurationSeconds).clamp(0, focusRemainingAtPhaseStart);
-      completedFocusSessions++;
-      if (remainingSeconds <= 0) {
-        remainingSeconds = 0;
-        isRunning = false;
-        isFinished = true;
-        endTime = null;
-        phaseRemainingSeconds = 0;
-        await _saveTimer();
-        await _syncNativeRestriction();
-        return;
-      }
-      final longBreak = completedFocusSessions % 4 == 0;
-      pomodoroPhase = longBreak ? 'long_break' : 'short_break';
-      phaseDurationSeconds = longBreak ? 15 * 60 : 5 * 60;
-      phaseRemainingSeconds = phaseDurationSeconds;
-      recoveryIntervalsApplied = 0;
-      focusRemainingAtPhaseStart = remainingSeconds;
-    } else {
-      pomodoroPhase = 'focus';
-      phaseDurationSeconds = (25 * 60).clamp(0, remainingSeconds);
-      phaseRemainingSeconds = phaseDurationSeconds;
-      focusRemainingAtPhaseStart = remainingSeconds;
-      recoveryIntervalsApplied = 0;
-    }
-    final phaseAnchor = phaseEndAnchorMs ?? DateTime.now().millisecondsSinceEpoch;
-    endTime = phaseAnchor + (phaseRemainingSeconds * 1000);
-    isRunning = true;
-    await _saveTimer();
-    await _syncNativeRestriction();
-  }
-
-  void _resetPomodoroState() {
-    pomodoroEnabled = false;
-    pomodoroPhase = 'focus';
-    phaseRemainingSeconds = 0;
-    phaseDurationSeconds = 0;
-    focusRemainingAtPhaseStart = 0;
-    completedFocusSessions = 0;
-    recoveryIntervalsApplied = 0;
   }
 
   void _updateRemaining() {
@@ -628,7 +446,6 @@ class StudyTimer extends ChangeNotifier {
     remainingSeconds = 0;
     endTime = null;
     startedAt = null;
-    _resetPomodoroState();
 
     isRunning = false;
     isFinished = false;
@@ -644,13 +461,6 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_finishedKey);
     await prefs.remove(_reservedMpKey);
     await prefs.remove(_startedAtKey);
-    await prefs.remove(_pomodoroEnabledKey);
-    await prefs.remove(_pomodoroPhaseKey);
-    await prefs.remove(_pomodoroPhaseRemainingKey);
-    await prefs.remove(_pomodoroPhaseDurationKey);
-    await prefs.remove(_pomodoroFocusAtStartKey);
-    await prefs.remove(_pomodoroSessionsKey);
-    await prefs.remove(_pomodoroRecoveryKey);
 
     await _syncNativeRestriction();
     notifyListeners();
@@ -673,13 +483,6 @@ class StudyTimer extends ChangeNotifier {
     await prefs.setBool(_runningKey, isRunning);
     await prefs.setBool(_finishedKey, isFinished);
     await prefs.setInt(_reservedMpKey, reservedMp);
-    await prefs.setBool(_pomodoroEnabledKey, pomodoroEnabled);
-    await prefs.setString(_pomodoroPhaseKey, pomodoroPhase);
-    await prefs.setInt(_pomodoroPhaseRemainingKey, phaseRemainingSeconds);
-    await prefs.setInt(_pomodoroPhaseDurationKey, phaseDurationSeconds);
-    await prefs.setInt(_pomodoroFocusAtStartKey, focusRemainingAtPhaseStart);
-    await prefs.setInt(_pomodoroSessionsKey, completedFocusSessions);
-    await prefs.setInt(_pomodoroRecoveryKey, recoveryIntervalsApplied);
 
     if (startedAt != null) {
       await prefs.setInt(_startedAtKey, startedAt!.millisecondsSinceEpoch);
