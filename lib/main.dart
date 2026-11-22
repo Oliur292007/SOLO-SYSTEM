@@ -20,6 +20,7 @@ import 'security_controller.dart';
 import 'security_page.dart';
 import 'pomodoro_system.dart';
 import 'pomodoro_page.dart';
+import 'app_update_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,6 +38,7 @@ Future<void> main() async {
     player: player,
     notifications: notificationService,
   );
+  final appUpdateService = AppUpdateService();
 
   // Local identity and progress preferences are essential for the first frame.
   // Keep all remote work out of the critical startup path.
@@ -75,6 +77,7 @@ Future<void> main() async {
       securityController: securityController,
       cloudProgressSync: cloudProgressSync,
       pomodoro: pomodoro,
+      appUpdateService: appUpdateService,
     ),
   );
 }
@@ -181,6 +184,7 @@ class ShadowLearnerApp extends StatefulWidget {
   final SecurityController securityController;
   final CloudProgressSync cloudProgressSync;
   final PomodoroSystem pomodoro;
+  final AppUpdateService appUpdateService;
 
   const ShadowLearnerApp({
     super.key,
@@ -195,6 +199,7 @@ class ShadowLearnerApp extends StatefulWidget {
     required this.securityController,
     required this.cloudProgressSync,
     required this.pomodoro,
+    required this.appUpdateService,
   });
 
   @override
@@ -282,6 +287,7 @@ class _ShadowLearnerAppState extends State<ShadowLearnerApp> {
         securityController: widget.securityController,
         cloudProgressSync: widget.cloudProgressSync,
         pomodoro: widget.pomodoro,
+        appUpdateService: widget.appUpdateService,
         appVersionLabel: appVersionLabel,
       ),
     );
@@ -302,6 +308,7 @@ class SystemHome extends StatefulWidget {
   final SecurityController securityController;
   final CloudProgressSync cloudProgressSync;
   final PomodoroSystem pomodoro;
+  final AppUpdateService appUpdateService;
   final String appVersionLabel;
 
   const SystemHome({
@@ -319,6 +326,7 @@ class SystemHome extends StatefulWidget {
     required this.securityController,
     required this.cloudProgressSync,
     required this.pomodoro,
+    required this.appUpdateService,
     required this.appVersionLabel,
   });
 
@@ -441,6 +449,74 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     _trackedTitle = player.title;
   }
 
+  Future<void> _checkForAppUpdate() async {
+    final update = await widget.appUpdateService.checkForUpdate();
+    if (update == null || !mounted) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final dismissedBuild = prefs.getInt('app_update_dismissed_build') ?? 0;
+    if (dismissedBuild >= update.buildNumber || !mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('NEW SHADOW LEARNER UPDATE'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Version ${update.version} is available.'),
+              const SizedBox(height: 10),
+              Text(update.releaseNotes.isEmpty
+                  ? 'Bug fixes and improvements.'
+                  : update.releaseNotes),
+              const SizedBox(height: 10),
+              const Text(
+                'The Android installer will ask you to confirm the update. '
+                'Do not uninstall the current app to update.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await prefs.setInt(
+                'app_update_dismissed_build',
+                update.buildNumber,
+              );
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+            child: const Text('LATER'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await prefs.setInt(
+                'app_update_dismissed_build',
+                update.buildNumber,
+              );
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+              final opened = await launchUrl(
+                Uri.parse(update.downloadUrl),
+                mode: LaunchMode.externalApplication,
+              );
+              if (!opened && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Could not open the APK download link.'),
+                  ),
+                );
+              }
+            },
+            child: const Text('DOWNLOAD UPDATE'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _reloadSystemsFromLocalStorage() async {
     await widget.player.loadPlayer();
     await widget.restSystem.loadRest();
@@ -455,6 +531,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(widget.securityController.refreshEmergencyUnlock());
+      unawaited(_checkForAppUpdate());
       if (widget.cloudProgressSync.isPaired) _syncCloudAndRefresh();
       unawaited(_syncMissionNotificationsSafely());
     } else if (state == AppLifecycleState.paused &&
@@ -522,6 +599,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       await _runFirstLaunchOnboarding();
+      unawaited(_checkForAppUpdate());
     });
     unawaited(_syncMissionNotificationsSafely());
   }
@@ -922,6 +1000,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             onDarkModeChanged: widget.onDarkModeChanged,
             appVersionLabel: widget.appVersionLabel,
             notificationService: widget.notificationService,
+            onCheckForUpdates: _checkForAppUpdate,
           ),
         ];
 
@@ -3477,6 +3556,7 @@ class SettingsPage extends StatelessWidget {
   final ValueChanged<bool> onDarkModeChanged;
   final String appVersionLabel;
   final MissionNotificationService notificationService;
+  final VoidCallback onCheckForUpdates;
 
   const SettingsPage({
     super.key,
@@ -3485,6 +3565,7 @@ class SettingsPage extends StatelessWidget {
     required this.onDarkModeChanged,
     required this.appVersionLabel,
     required this.notificationService,
+    required this.onCheckForUpdates,
   });
 
   Future<void> _editPlayerName(BuildContext context) async {
@@ -3599,6 +3680,15 @@ class SettingsPage extends StatelessWidget {
                   onChanged: onDarkModeChanged,
                   activeThumbColor: c.cyan,
                 ),
+              ),
+              Divider(color: c.divider, height: 1),
+              ListTile(
+                leading: Icon(Icons.system_update_alt, color: c.cyan),
+                title: Text('Check for Updates', style: TextStyle(color: c.text)),
+                subtitle: Text('Look for the latest Shadow Learner release',
+                    style: TextStyle(color: c.muted)),
+                trailing: Icon(Icons.chevron_right, color: c.muted),
+                onTap: onCheckForUpdates,
               ),
               Divider(color: c.divider, height: 1),
               ListTile(
