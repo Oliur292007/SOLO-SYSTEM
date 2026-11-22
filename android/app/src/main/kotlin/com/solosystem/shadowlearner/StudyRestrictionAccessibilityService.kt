@@ -64,14 +64,16 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 ScreenTimePolicy.hasUsageAccess(this@StudyRestrictionAccessibilityService) &&
                 !isSystemAllowedPackage(packageName)
             ) {
-                val reportedUsage = ScreenTimePolicy.usageByPackage(
+                val usage = ScreenTimePolicy.usageByPackage(
                     this@StudyRestrictionAccessibilityService
-                )[packageName] ?: 0L
-                val usedMs = maxOf(reportedUsage, currentSessionUsageMs)
+                )
+                val reportedUsage = usage[packageName] ?: 0L
+                val estimatedUsage = maxOf(reportedUsage, currentSessionUsageMs)
                 if (ScreenTimePolicy.limitReachedForUsage(
                         this@StudyRestrictionAccessibilityService,
                         packageName,
-                        usedMs
+                        estimatedUsage,
+                        usage
                     )
                 ) {
                     redirectHome(packageName)
