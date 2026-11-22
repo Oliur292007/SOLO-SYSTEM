@@ -20,6 +20,7 @@ class _ScreenTimePageState extends State<ScreenTimePage>
     with WidgetsBindingObserver {
   Map<String, dynamic> _summary = {};
   bool _loading = true;
+  bool _hasAccessibility = false;
   String? _error;
 
   @override
@@ -49,9 +50,14 @@ class _ScreenTimePageState extends State<ScreenTimePage>
       final result = await _screenTimeChannel.invokeMapMethod<String, dynamic>(
         'getDailyUsage',
       );
+      final accessibility = await _screenTimeChannel.invokeMethod<bool>(
+            'isAccessibilityEnabled',
+          ) ??
+          false;
       if (!mounted) return;
       setState(() {
         _summary = result ?? {};
+        _hasAccessibility = accessibility;
         _loading = false;
       });
     } on PlatformException catch (error) {
@@ -66,6 +72,17 @@ class _ScreenTimePageState extends State<ScreenTimePage>
         _error = error.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _openAccessibilitySettings() async {
+    try {
+      await _screenTimeChannel.invokeMethod<void>('openAccessibilitySettings');
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open Accessibility Settings: ${error.message}')),
+      );
     }
   }
 
@@ -214,6 +231,36 @@ class _ScreenTimePageState extends State<ScreenTimePage>
                     ),
                   ),
                 ] else ...[
+                  if (!_hasAccessibility)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: colors.panel,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.orangeAccent),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('ACCESSIBILITY SERVICE REQUIRED',
+                              style: TextStyle(
+                                  color: colors.text,
+                                  fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Enable Shadow Learner under Android Accessibility Settings. '
+                            'The same service enforces daily limits and Study Protection.',
+                            style: TextStyle(color: colors.muted, fontSize: 11),
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton(
+                            onPressed: _openAccessibilitySettings,
+                            child: const Text('OPEN ACCESSIBILITY SETTINGS'),
+                          ),
+                        ],
+                      ),
+                    ),
                   Text('TODAY',
                       style: TextStyle(
                           color: colors.cyan,
