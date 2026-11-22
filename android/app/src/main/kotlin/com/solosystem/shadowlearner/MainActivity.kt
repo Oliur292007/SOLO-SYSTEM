@@ -1,6 +1,7 @@
 package com.solosystem.shadowlearner
 
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.ComponentName
 import android.content.Intent
 import android.provider.Settings
 import java.util.TimeZone
@@ -49,15 +50,37 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "isAccessibilityEnabled" -> {
+                        val serviceComponent = ComponentName(
+                            this,
+                            StudyRestrictionAccessibilityService::class.java
+                        )
+                        val expectedId = serviceComponent.flattenToString()
+
+                        // Read Android's enabled-service registry directly. Some OEM
+                        // builds expose a different serviceInfo.name representation.
+                        val enabledServices = Settings.Secure.getString(
+                            contentResolver,
+                            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                        ).orEmpty()
+
+                        val enabledInSecureSettings = enabledServices
+                            .split(':')
+                            .any { it.equals(expectedId, ignoreCase = true) }
+
+                        // Keep AccessibilityManager as a secondary compatibility check.
                         val manager = getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
-                        val enabled = manager.getEnabledAccessibilityServiceList(
+                        val enabledInManager = manager.getEnabledAccessibilityServiceList(
                             AccessibilityServiceInfo.FEEDBACK_ALL_MASK
-                        ).any {
-                            it.resolveInfo.serviceInfo.packageName == packageName &&
-                                it.resolveInfo.serviceInfo.name ==
-                                StudyRestrictionAccessibilityService::class.java.name
+                        ).any { service ->
+                            service.id.equals(expectedId, ignoreCase = true) ||
+                                (
+                                    service.resolveInfo.serviceInfo.packageName == packageName &&
+                                    service.resolveInfo.serviceInfo.name.substringAfterLast('.') ==
+                                        StudyRestrictionAccessibilityService::class.java.simpleName
+                                )
                         }
-                        result.success(enabled)
+
+                        result.success(enabledInSecureSettings || enabledInManager)
                     }
                     else -> result.notImplemented()
                 }
