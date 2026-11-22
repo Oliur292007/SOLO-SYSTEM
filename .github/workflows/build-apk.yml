@@ -32,14 +32,25 @@ jobs:
           grep -q 'ScheduledNotificationBootReceiver' android/app/src/main/AndroidManifest.xml
       - name: Install Dependencies
         run: flutter pub get
+      - name: Download Shadow Learner Logo from Google Drive
+        run: |
+          mkdir -p assets/branding
+          python -m pip install --quiet gdown
+          gdown "https://drive.google.com/uc?id=1qHFzrE9r8V4zEE8r43Su1rUHsh6O872F" -O assets/branding/app_logo.png
+          python - <<'PY'
+          from PIL import Image
+          image = Image.open("assets/branding/app_logo.png")
+          image.verify()
+          image = Image.open("assets/branding/app_logo.png")
+          if image.width != image.height:
+              raise SystemExit("Logo must be square.")
+          print(f"Verified logo: {image.width}x{image.height}")
+          PY
       - name: Generate App Icon and Splash from Uploaded Logo
         run: |
-          if [ -f assets/branding/app_logo.png ]; then
-            dart run flutter_launcher_icons
-            dart run flutter_native_splash:create
-          else
-            echo "No custom logo uploaded yet; keeping the existing Android icon and navy launch background."
-          fi
+          test -s assets/branding/app_logo.png
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
       - name: Analyze Dart Code
         run: flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
       - name: Build Release APK
