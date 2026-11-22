@@ -90,6 +90,17 @@ class CloudProgressSync {
     'dark_mode',
     'solo_notification_history',
     'solo_notification_history_date',
+
+    // Pomodoro timer, settings and completed-session count
+    'pomodoro_focus_minutes',
+    'pomodoro_short_break_minutes',
+    'pomodoro_long_break_minutes',
+    'pomodoro_long_break_every',
+    'pomodoro_phase',
+    'pomodoro_remaining_seconds',
+    'pomodoro_running',
+    'pomodoro_end_time_ms',
+    'pomodoro_completed_focus_sessions',
   };
 
   final UidManager uidManager;
