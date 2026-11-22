@@ -5,9 +5,4 @@
             <solid android:color="#050B18" />
         </shape>
     </item>
-    <item
-        android:drawable="@drawable/shadow_learner_icon"
-        android:gravity="center"
-        android:width="260dp"
-        android:height="260dp" />
 </layer-list>
