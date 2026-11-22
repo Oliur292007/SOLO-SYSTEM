@@ -1081,7 +1081,13 @@ class QuestSystem extends ChangeNotifier {
             DateTime.fromMillisecondsSinceEpoch(item['deadline'] as int);
         final isOptional = item['optional'] as bool? ?? false;
 
-        if (completedQuestIds.contains(id)) continue;
+        // These outcomes were already processed on the previous day.
+        // Do not apply HP damage or penalties a second time at rollover.
+        if (completedQuestIds.contains(id) ||
+            missedQuestIds.contains(id) ||
+            skippedQuestIds.contains(id)) {
+          continue;
+        }
         if (isOptional) continue;
 
         // A timer started before the deadline may finish late on the same day,

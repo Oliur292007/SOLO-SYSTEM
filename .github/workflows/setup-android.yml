@@ -1,33 +1,20 @@
-name: Setup Android Folder
+name: Verify Android Folder
 
 on:
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  setup-android:
+  verify-android:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.PAT_TOKEN }}  # ← PAT ব্যবহার
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.32.8'
-          channel: 'stable'
-
-      - name: Recreate Android folder
-        run: flutter create . --platforms=android
-
-      - name: Commit and push changes
+      - name: Verify Native Android Configuration
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add android/
-          git commit -m "Add missing android folder via flutter create" || echo "No changes to commit"
-          git push
+          test -f android/app/src/main/kotlin/com/example/solo_system/MainActivity.kt
+          test -f android/app/src/main/kotlin/com/example/solo_system/StudyRestrictionAccessibilityService.kt
+          grep -q 'namespace = "com.oliur.solosystem.solo_system"' android/app/build.gradle.kts
+          grep -q 'applicationId = "com.oliur.solosystem.solo_system"' android/app/build.gradle.kts
+          grep -q 'SCHEDULE_EXACT_ALARM' android/app/src/main/AndroidManifest.xml
+          grep -q 'ScheduledNotificationBootReceiver' android/app/src/main/AndroidManifest.xml
