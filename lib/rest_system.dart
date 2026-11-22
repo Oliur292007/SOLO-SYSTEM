@@ -234,12 +234,9 @@ class RestSystem extends ChangeNotifier {
     final totalHpRecovery = baseHpRecovery + hpBonus;
     final totalMpRecovery = baseMpRecovery + mpBonus;
 
-    // CLEAR ACTIVE REST BEFORE APPLYING RECOVERY.
-    _longRestStart = null;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_longRestStartKey);
-
+    // Apply the idempotent recovery event before clearing the persisted
+    // sleep marker. If the process is killed here, loadRest() retries the same
+    // event ID and then safely clears the marker without awarding twice.
     if (totalHpRecovery > 0 || totalMpRecovery > 0) {
       await player.recoverVitalsOnce(
         'long-rest:${start.millisecondsSinceEpoch}',
@@ -247,6 +244,10 @@ class RestSystem extends ChangeNotifier {
         mpAmount: totalMpRecovery,
       );
     }
+
+    _longRestStart = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_longRestStartKey);
 
     _stopTickerIfIdle();
     notifyListeners();
