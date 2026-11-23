@@ -285,7 +285,7 @@ class _TimetablePageState extends State<TimetablePage> {
                           ),
                           const SizedBox(height: 4),
                           const Text(
-                            'Selected apps will keep Quest Timer running while you study.',
+                            'Apps selected in your saved schedules will keep Quest Timer running.',
                             style: TextStyle(fontSize: 11, color: Colors.grey),
                           ),
                           const SizedBox(height: 8),
