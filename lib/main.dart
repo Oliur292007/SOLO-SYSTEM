@@ -673,8 +673,19 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   }
 
   Future<void> _syncMissionNotifications() async {
-    await widget.notificationService.syncMissionReminders(
-      widget.timetableSystem.allSchedules,
+    final schedules = widget.timetableSystem.allSchedules;
+    await widget.notificationService.syncMissionReminders(schedules);
+    // Native exact alarms enforce Study Protection even while Flutter is closed.
+    await _appRestrictionChannel.invokeMethod<bool>(
+      'syncStudyProtectionSchedules',
+      <String, dynamic>{
+        'schedules': schedules.map((item) => <String, dynamic>{
+          'id': item.id,
+          'dayOfWeek': item.dayOfWeek,
+          'startTime': item.startTime,
+          'durationMinutes': item.durationMinutes,
+        }).toList(),
+      },
     );
   }
 
