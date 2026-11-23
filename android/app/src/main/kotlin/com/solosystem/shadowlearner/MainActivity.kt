@@ -19,6 +19,9 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "shouldPauseQuestTimer" -> {
+                        result.success(ScreenTimePolicy.shouldPauseQuestTimer(this))
+                    }
                     "setStudyRestriction" -> {
                         val active = call.argument<Boolean>("active") ?: false
                         getSharedPreferences(
