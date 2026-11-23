@@ -3,6 +3,7 @@ package com.solosystem.shadowlearner
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ComponentName
 import android.content.Intent
+import android.os.PowerManager
 import android.provider.Settings
 import java.util.TimeZone
 import android.view.accessibility.AccessibilityManager
@@ -34,6 +35,40 @@ class MainActivity : FlutterActivity() {
                     "openUsageAccessSettings" -> {
                         ScreenTimePolicy.openUsageAccessSettings(this)
                         result.success(true)
+                    }
+                    "isIgnoringBatteryOptimizations" -> {
+                        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+                        result.success(powerManager.isIgnoringBatteryOptimizations(packageName))
+                    }
+                    "requestBatteryOptimizationExemption" -> {
+                        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+                        if (powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                            result.success(true)
+                        } else {
+                            val requestIntent = Intent(
+                                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                android.net.Uri.parse("package:$packageName")
+                            )
+                            try {
+                                startActivity(requestIntent)
+                                result.success(false)
+                            } catch (_: Exception) {
+                                try {
+                                    startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                                    result.success(false)
+                                } catch (error: Exception) {
+                                    result.error("BATTERY_SETTINGS_UNAVAILABLE", error.message, null)
+                                }
+                            }
+                        }
+                    }
+                    "openBatteryOptimizationSettings" -> {
+                        try {
+                            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                            result.success(true)
+                        } catch (error: Exception) {
+                            result.error("BATTERY_SETTINGS_UNAVAILABLE", error.message, null)
+                        }
                     }
                     "syncScreenTimeConfig" -> {
                         ScreenTimePolicy.sync(this, call.arguments as? Map<*, *> ?: emptyMap<Any, Any>())

@@ -696,9 +696,12 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   }
 
   Future<void> _showFirstLaunchSetup() async {
-    const onboardingVersion = 7;
+    const onboardingVersion = 8;
     const onboardingVersionKey = 'first_launch_onboarding_version';
     final prefs = await SharedPreferences.getInstance();
+    final deferredUntil =
+        prefs.getInt('permission_setup_deferred_until') ?? 0;
+    if (deferredUntil > DateTime.now().millisecondsSinceEpoch) return;
     if ((prefs.getInt(onboardingVersionKey) ?? 0) >= onboardingVersion) {
       return;
     }
@@ -729,6 +732,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
 
     if (!mounted) return;
     if (continueSetup == true) {
+      await prefs.remove('permission_setup_deferred_until');
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => PermissionManagementPage(
@@ -736,8 +740,13 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
           ),
         ),
       );
+      await prefs.setInt(onboardingVersionKey, onboardingVersion);
+    } else {
+      await prefs.setInt(
+        'permission_setup_deferred_until',
+        DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch,
+      );
     }
-    await prefs.setInt(onboardingVersionKey, onboardingVersion);
   }
 
   Future<void> _showRegistrationPrompt() async {
