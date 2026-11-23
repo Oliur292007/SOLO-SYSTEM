@@ -105,6 +105,8 @@ class StudyTimer extends ChangeNotifier {
   // ============================================================
 
   Future<void> loadTimer({PlayerSystem? player}) async {
+    _ticker?.cancel();
+    _ticker = null;
     final prefs = await SharedPreferences.getInstance();
 
     activeQuestId = prefs.getString(_questIdKey);
