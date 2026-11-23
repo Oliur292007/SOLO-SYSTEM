@@ -351,7 +351,6 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.timetableSystem.removeListener(_onTimetableChanged);
     widget.restSystem.removeListener(_onLocalProgressChanged);
     _notificationPollTimer?.cancel();
-    _questTimerPauseCheckTimer?.cancel();
     widget.cloudProgressSync.dispose();
     super.dispose();
   }
@@ -597,8 +596,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     _questTimerPauseCheckTimer = Timer(
       const Duration(milliseconds: 900),
       () async {
-        if (!mounted ||
-            WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
           return;
         }
         try {
@@ -607,14 +605,13 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
                     'shouldPauseQuestTimer',
                   ) ??
                   true;
-          if (shouldPause && mounted &&
+          if (shouldPause &&
               WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
             await widget.studyTimer.pause();
           }
         } catch (error) {
           debugPrint('QUEST TIMER BACKGROUND CHECK ERROR: $error');
-          if (mounted &&
-              WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+          if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
             await widget.studyTimer.pause();
           }
         }
