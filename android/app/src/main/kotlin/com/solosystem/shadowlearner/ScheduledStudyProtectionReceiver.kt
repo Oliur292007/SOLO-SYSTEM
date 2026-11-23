@@ -68,11 +68,24 @@ class ScheduledStudyProtectionReceiver : BroadcastReceiver() {
                 val duration = item.optInt("durationMinutes")
                 if (day !in 1..7 || duration <= 0) continue
 
-                val start = nextOccurrence(day, hour, minute)
-                val end = start.clone() as Calendar
-                end.add(Calendar.MINUTE, duration)
-                setBoundary(context, alarm, requestCode(id, 0), start.timeInMillis)
-                setBoundary(context, alarm, requestCode(id, 1), end.timeInMillis)
+                val now = Calendar.getInstance()
+                val currentStart = occurrenceInCurrentWeek(day, hour, minute, now)
+                val currentEnd = currentStart.clone() as Calendar
+                currentEnd.add(Calendar.MINUTE, duration)
+                if (currentEnd.after(now)) {
+                    // If this schedule is already active, preserve today's end alarm.
+                    // Otherwise schedule both upcoming boundaries.
+                    if (currentStart.after(now)) {
+                        setBoundary(context, alarm, requestCode(id, 0), currentStart.timeInMillis)
+                    }
+                    setBoundary(context, alarm, requestCode(id, 1), currentEnd.timeInMillis)
+                } else {
+                    val nextStart = nextOccurrence(day, hour, minute)
+                    val nextEnd = nextStart.clone() as Calendar
+                    nextEnd.add(Calendar.MINUTE, duration)
+                    setBoundary(context, alarm, requestCode(id, 0), nextStart.timeInMillis)
+                    setBoundary(context, alarm, requestCode(id, 1), nextEnd.timeInMillis)
+                }
             }
             Log.i(TAG, "Study schedule refreshed; active=$active, count=${schedules.length()}")
         }
@@ -111,6 +124,21 @@ class ScheduledStudyProtectionReceiver : BroadcastReceiver() {
             } else {
                 alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pending)
             }
+        }
+
+        private fun occurrenceInCurrentWeek(
+            dayOfWeek: Int, hour: Int, minute: Int, now: Calendar
+        ): Calendar {
+            val target = now.clone() as Calendar
+            val androidDay = if (dayOfWeek == 7) Calendar.SUNDAY else dayOfWeek + 1
+            val daysBack = (now.get(Calendar.DAY_OF_WEEK) - androidDay + 7) % 7
+            target.add(Calendar.DAY_OF_YEAR, -daysBack)
+            target.set(Calendar.HOUR_OF_DAY, hour)
+            target.set(Calendar.MINUTE, minute)
+            target.set(Calendar.SECOND, 0)
+            target.set(Calendar.MILLISECOND, 0)
+            if (target.after(now)) target.add(Calendar.DAY_OF_YEAR, -7)
+            return target
         }
 
         private fun nextOccurrence(dayOfWeek: Int, hour: Int, minute: Int): Calendar {
