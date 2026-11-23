@@ -158,19 +158,13 @@ class StudyTimer extends ChangeNotifier {
       await prefs.remove(_startedAtKey);
     }
 
-    if (isRunning && endTime != null) {
-      _updateRemaining();
-      if (remainingSeconds <= 0) {
-        remainingSeconds = 0;
-        isRunning = false;
-        isFinished = true;
-        endTime = null;
-        await _saveTimer();
-      } else {
-        _startTicker();
-      }
-    } else if (isRunning && endTime == null) {
+    // A timer must never continue counting while the app process is not
+    // in the foreground. Lifecycle callbacks normally persist the exact
+    // remaining time; this startup guard also handles force-stop/process death.
+    // Restore any stale running session as PAUSED, never as an active countdown.
+    if (isRunning) {
       isRunning = false;
+      endTime = null;
       await _saveTimer();
     }
 
