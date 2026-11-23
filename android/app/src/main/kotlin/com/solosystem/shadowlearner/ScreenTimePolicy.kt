@@ -78,8 +78,8 @@ object ScreenTimePolicy {
      */
     fun shouldPauseQuestTimer(context: Context): Boolean {
         if (!isScreenInteractiveAndUnlocked(context)) return false
-        val foregroundPackage = mostRecentForegroundPackage(context)
-            ?: StudyRestrictionAccessibilityService.lastKnownForegroundPackageForTimer
+        val foregroundPackage = StudyRestrictionAccessibilityService.lastKnownForegroundPackageForTimer
+            ?: mostRecentForegroundPackage(context)
             ?: return true
         return shouldPauseQuestTimerForPackage(context, foregroundPackage)
     }
