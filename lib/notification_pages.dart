@@ -156,6 +156,7 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
   bool _accessibilityEnabled = false;
   bool _accessibilityConnected = false;
   bool _usageAccessEnabled = false;
+  bool _batteryOptimizationIgnored = false;
   bool _checking = true;
 
   @override
@@ -184,6 +185,7 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
     bool accessibility = false;
     bool accessibilityConnected = false;
     bool usageAccess = false;
+    bool batteryOptimizationIgnored = false;
     try {
       accessibility =
           await _channel.invokeMethod<bool>('isAccessibilityEnabled') ?? false;
@@ -196,6 +198,11 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
       usageAccess =
           await _channel.invokeMethod<bool>('hasUsageAccess') ?? false;
     } catch (_) {}
+    try {
+      batteryOptimizationIgnored =
+          await _channel.invokeMethod<bool>('isIgnoringBatteryOptimizations') ??
+              false;
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       _notificationsEnabled = notifications;
@@ -203,6 +210,7 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
       _accessibilityEnabled = accessibility;
       _accessibilityConnected = accessibilityConnected;
       _usageAccessEnabled = usageAccess;
+      _batteryOptimizationIgnored = batteryOptimizationIgnored;
       _checking = false;
     });
   }
@@ -362,6 +370,18 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _open('openAppDetailsSettings'),
             ),
+          ),
+          _permissionTile(
+            icon: Icons.battery_saver_outlined,
+            title: 'Background / Battery Optimization',
+            subtitle: _batteryOptimizationIgnored
+                ? 'Battery optimization is disabled for Shadow Learner'
+                : 'Allow unrestricted battery use so Android is less likely to stop Study Protection in the background',
+            enabled: _batteryOptimizationIgnored,
+            onTap: () async {
+              await _open('requestBatteryOptimizationExemption');
+              await _refresh();
+            },
           ),
           _permissionTile(
             icon: Icons.app_settings_alt,
