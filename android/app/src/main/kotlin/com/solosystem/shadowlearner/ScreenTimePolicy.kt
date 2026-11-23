@@ -4,6 +4,8 @@ import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.app.KeyguardManager
+import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
 import org.json.JSONObject
@@ -69,6 +71,56 @@ object ScreenTimePolicy {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getInt(KEY_YOUTUBE_WARNING, 5).coerceAtLeast(1)
 
+    /**
+     * Decide whether leaving Shadow Learner should pause the Quest Timer.
+     * Education apps and YouTube are intentional study destinations. Screen-off
+     * and keyguard states are not treated as leaving for another app.
+     */
+    fun shouldPauseQuestTimer(context: Context): Boolean {
+        val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!power.isInteractive) return false
+
+        val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        if (keyguard.isKeyguardLocked) return false
+
+        val foregroundPackage = mostRecentForegroundPackage(context)
+            ?: StudyRestrictionAccessibilityService.lastKnownForegroundPackageForTimer
+            ?: return true
+
+        if (foregroundPackage == context.packageName) return false
+
+        // System UI overlays are not an intentional app switch. The home launcher is not exempt.
+        val normalized = foregroundPackage.lowercase()
+        if (normalized == "android" || normalized.contains("systemui") ||
+            normalized.contains("permissioncontroller")) return false
+
+        val category = categoryFor(context, foregroundPackage)
+        return category != "education" && category != "youtube_special"
+    }
+
+    private fun mostRecentForegroundPackage(context: Context): String? {
+        if (!hasUsageAccess(context)) return null
+        val manager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val now = System.currentTimeMillis()
+        return runCatching {
+            val events = manager.queryEvents(now - 15_000L, now)
+            val event = android.app.usage.UsageEvents.Event()
+            var latestPackage: String? = null
+            var latestTimestamp = 0L
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                val isForeground = event.eventType ==
+                    android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED ||
+                    event.eventType ==
+                    android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND
+                if (isForeground && event.timeStamp >= latestTimestamp) {
+                    latestTimestamp = event.timeStamp
+                    latestPackage = event.packageName
+                }
+            }
+            latestPackage
+        }.getOrNull()
+    }
     fun isStudyAllowed(context: Context, packageName: String): Boolean {
         if (packageName == context.packageName) return true
         val allowed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
