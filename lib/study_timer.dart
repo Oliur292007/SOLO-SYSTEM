@@ -158,18 +158,33 @@ class StudyTimer extends ChangeNotifier {
       await prefs.remove(_startedAtKey);
     }
 
-    // A timer must never continue counting while the app process is not
-    // in the foreground. Lifecycle callbacks normally persist the exact
-    // remaining time; this startup guard also handles force-stop/process death.
-    // Restore any stale running session as PAUSED, never as an active countdown.
+    // Restore a running countdown from its wall-clock end time. Background
+    // lifecycle handling pauses it only when Android confirms a disallowed
+    // foreground app; Education / YouTube and screen-off sessions keep running.
+    var restoreTicker = false;
     if (isRunning) {
-      isRunning = false;
-      endTime = null;
+      if (activeQuestId == null || endTime == null) {
+        isRunning = false;
+        endTime = null;
+      } else {
+        final secondsLeft =
+            ((endTime! - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
+        if (secondsLeft <= 0) {
+          remainingSeconds = 0;
+          isRunning = false;
+          isFinished = true;
+          endTime = null;
+        } else {
+          remainingSeconds = secondsLeft;
+          restoreTicker = true;
+        }
+      }
       await _saveTimer();
     }
 
     isLoaded = true;
     await _syncNativeRestriction();
+    if (restoreTicker) _startTicker();
     notifyListeners();
   }
 
