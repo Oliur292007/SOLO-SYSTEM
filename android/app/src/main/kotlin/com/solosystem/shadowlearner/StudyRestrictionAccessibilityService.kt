@@ -187,6 +187,9 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             // Study Protection is time-critical and uses only a SharedPreferences
             // read here; it never waits for the UsageStats worker.
             if (isStudyProtectionActive()) {
+                // Education / YouTube-special and explicitly allowed packages
+                // remain available during Study Protection.
+                if (ScreenTimePolicy.isStudyAllowed(this, openedPackage)) return
                 redirectHome(openedPackage)
                 return
             }
