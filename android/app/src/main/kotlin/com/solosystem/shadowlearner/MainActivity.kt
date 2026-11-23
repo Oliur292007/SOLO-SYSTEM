@@ -22,6 +22,14 @@ class MainActivity : FlutterActivity() {
                     "shouldPauseQuestTimer" -> {
                         result.success(ScreenTimePolicy.shouldPauseQuestTimer(this))
                     }
+                    "getEducationApps" -> {
+                        result.success(ScreenTimePolicy.educationApps(this))
+                    }
+                    "syncQuestTimerEducationApps" -> {
+                        val packages = call.argument<List<String>>("packages") ?: emptyList()
+                        ScreenTimePolicy.syncQuestTimerEducationApps(this, packages)
+                        result.success(true)
+                    }
                     "setStudyRestriction" -> {
                         val active = call.argument<Boolean>("active") ?: false
                         getSharedPreferences(
