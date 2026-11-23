@@ -108,6 +108,7 @@ class StudyTimer extends ChangeNotifier {
     _ticker?.cancel();
     _ticker = null;
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
 
     activeQuestId = prefs.getString(_questIdKey);
     remainingSeconds = prefs.getInt(_remainingKey) ?? 0;
