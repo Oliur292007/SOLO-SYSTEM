@@ -77,14 +77,15 @@ object ScreenTimePolicy {
      * and keyguard states are not treated as leaving for another app.
      */
     fun shouldPauseQuestTimer(context: Context): Boolean {
+        if (!isScreenInteractiveAndUnlocked(context)) return false
         val foregroundPackage = mostRecentForegroundPackage(context)
             ?: StudyRestrictionAccessibilityService.lastKnownForegroundPackageForTimer
-            ?: return shouldPauseForCurrentDeviceState(context, null)
+            ?: return true
         return shouldPauseQuestTimerForPackage(context, foregroundPackage)
     }
 
     fun shouldPauseQuestTimerForPackage(context: Context, packageName: String): Boolean {
-        if (!shouldPauseForCurrentDeviceState(context, packageName)) return false
+        if (!isScreenInteractiveAndUnlocked(context)) return false
         if (packageName == context.packageName) return false
 
         // System UI overlays (notification shade / quick settings) are not an
@@ -97,17 +98,12 @@ object ScreenTimePolicy {
         return category != "education" && category != "youtube_special"
     }
 
-    private fun shouldPauseForCurrentDeviceState(
-        context: Context,
-        packageName: String?
-    ): Boolean {
+    private fun isScreenInteractiveAndUnlocked(context: Context): Boolean {
         val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         if (!power.isInteractive) return false
         val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-        if (keyguard.isKeyguardLocked) return false
-        return packageName != null
+        return !keyguard.isKeyguardLocked
     }
-
     /**
      * Persist a pause directly to Flutter's preferences as a process-death
      * fallback. The Flutter lifecycle callback also pauses the in-memory timer.
