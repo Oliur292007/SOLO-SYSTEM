@@ -39,11 +39,20 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             try {
                 val packageName = currentForegroundPackage
                 val nowElapsed = SystemClock.elapsedRealtime()
+                val studyActive = getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .getBoolean(KEY_ACTIVE, false)
                 val today = usageDayKey()
                 if (today != currentUsageDay) {
                     currentUsageDay = today
-                    currentSessionUsageMs = if (packageName == null) 0L else
+                    currentSessionUsageMs = if (
+                        packageName != null &&
+                        !studyActive &&
+                        ScreenTimePolicy.hasUsageAccess(this@StudyRestrictionAccessibilityService)
+                    ) {
                         ScreenTimePolicy.usageByPackage(this@StudyRestrictionAccessibilityService)[packageName] ?: 0L
+                    } else {
+                        0L
+                    }
                     lastUsageTickElapsed = nowElapsed
                 }
                 if (lastUsageTickElapsed > 0L && isScreenInteractive()) {
@@ -51,8 +60,6 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 }
                 lastUsageTickElapsed = nowElapsed
 
-                val studyActive = getSharedPreferences(PREFS, MODE_PRIVATE)
-                    .getBoolean(KEY_ACTIVE, false)
                 // Study Protection always takes precedence over daily Screen Time.
                 // Never consult Screen Time categories or whitelist while it is active.
                 if (packageName != null && studyActive && !isSystemAllowedPackage(packageName)) {
@@ -81,14 +88,25 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 // A failed usage query must not permanently kill the monitoring loop.
                 Log.e("ShadowLearnerAccess", "Policy monitoring tick failed", error)
             } finally {
-                if (isConnected) handler.postDelayed(this, 10_000L)
+                scheduleMonitoring(10_000L)
             }
         }
+    }
+
+    /**
+     * Keep one watchdog callback only. The AccessibilityService is system-bound;
+     * this loop supplements event callbacks and must never own service lifetime.
+     */
+    private fun scheduleMonitoring(delayMs: Long = 0L) {
+        if (!isConnected) return
+        handler.removeCallbacks(screenTimeCheck)
+        handler.postDelayed(screenTimeCheck, delayMs)
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         isConnected = true
+        Log.i("ShadowLearnerAccess", "Accessibility service connected")
         serviceInfo = serviceInfo.apply {
             eventTypes =
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
@@ -97,8 +115,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         }
         lastRedirectAt = 0L
         lastBlockedPackage = null
-        handler.removeCallbacks(screenTimeCheck)
-        handler.post(screenTimeCheck)
+        scheduleMonitoring()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -114,14 +131,24 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 ?: event.packageName?.toString()?.takeIf { it.isNotBlank() }
                 ?: return
 
-            if (currentForegroundPackage != openedPackage) {
-                currentForegroundPackage = openedPackage
-                currentSessionUsageMs =
-                    ScreenTimePolicy.usageByPackage(this)[openedPackage] ?: 0L
-                lastUsageTickElapsed = SystemClock.elapsedRealtime()
-            }
             val studyProtectionActive = getSharedPreferences(PREFS, MODE_PRIVATE)
                 .getBoolean(KEY_ACTIVE, false)
+
+            if (currentForegroundPackage != openedPackage) {
+                currentForegroundPackage = openedPackage
+                // Do not perform a full UsageStats event-history scan for every
+                // foreground event while Study Protection is active. That scan is
+                // only needed by the independent Screen Time policy.
+                currentSessionUsageMs = if (
+                    !studyProtectionActive &&
+                    ScreenTimePolicy.hasUsageAccess(this)
+                ) {
+                    ScreenTimePolicy.usageByPackage(this)[openedPackage] ?: 0L
+                } else {
+                    0L
+                }
+                lastUsageTickElapsed = SystemClock.elapsedRealtime()
+            }
 
             if (isSystemAllowedPackage(openedPackage)) return
 
@@ -193,19 +220,20 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {
         // Android may interrupt accessibility feedback without disconnecting
         // the service. Keep policy monitoring alive instead of cancelling it.
-        if (isConnected) {
-            handler.removeCallbacks(screenTimeCheck)
-            handler.post(screenTimeCheck)
-        }
+        // onInterrupt is not a disconnect. Re-arm the single monitoring callback
+        // without changing the system-managed AccessibilityService lifecycle.
+        scheduleMonitoring()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        Log.w("ShadowLearnerAccess", "Accessibility service unbound by Android")
         isConnected = false
         handler.removeCallbacks(screenTimeCheck)
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
+        Log.w("ShadowLearnerAccess", "Accessibility service destroyed")
         isConnected = false
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
