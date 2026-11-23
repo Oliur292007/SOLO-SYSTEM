@@ -32,6 +32,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     companion object {
         const val PREFS = "solo_system_study_restriction"
         const val KEY_ACTIVE = "study_restriction_active"
+        private const val YOUTUBE_WARNING_CHANNEL = "youtube_time_reminders"
 
         @Volatile
         var isConnected: Boolean = false
@@ -149,14 +150,15 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             return
         }
 
-        val intervalMs = ScreenTimePolicy.youtubeWarningMinutes(this) * 60_000L
+        val intervalMinutes = ScreenTimePolicy.youtubeWarningMinutes(this)
+        val intervalMs = intervalMinutes * 60_000L
         if (nowElapsed - youtubeWarningStartedAtElapsed >= intervalMs) {
-            postYouTubeWarning()
+            postYouTubeWarning(intervalMinutes)
             youtubeWarningStartedAtElapsed = nowElapsed
         }
     }
 
-    private fun postYouTubeWarning() {
+    private fun postYouTubeWarning(intervalMinutes: Int) {
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
                 PackageManager.PERMISSION_GRANTED) return
@@ -182,7 +184,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             val notification = builder
                 .setSmallIcon(applicationInfo.icon)
                 .setContentTitle("YOUTUBE TIME CHECK")
-                .setContentText("5 minutes have passed on YouTube. Stay focused on your learning goal.")
+                .setContentText("$intervalMinutes minutes have passed on YouTube. Stay focused on your learning goal.")
                 .setCategory(Notification.CATEGORY_REMINDER)
                 .setAutoCancel(true)
                 .build()
@@ -192,9 +194,6 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         }
     }
 
-    companion object {
-        private const val YOUTUBE_WARNING_CHANNEL = "youtube_time_reminders"
-    }
     private fun isStudyProtectionActive(): Boolean {
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         return prefs.getBoolean(KEY_ACTIVE, false) ||
