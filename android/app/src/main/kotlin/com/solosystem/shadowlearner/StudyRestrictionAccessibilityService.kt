@@ -1,8 +1,15 @@
 package com.solosystem.shadowlearner
 
 import android.accessibilityservice.AccessibilityService
+import android.Manifest
+import android.app.KeyguardManager
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -46,6 +53,8 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     private var lastRedirectAt = 0L
     private var lastBlockedPackage: String? = null
     private var currentUsageDay = usageDayKey()
+    private var youtubeWarningStartedAtElapsed = 0L
+    private var youtubeWarningNotificationId = 54_000
 
     private val screenTimeCheck = object : Runnable {
         override fun run() {
@@ -61,6 +70,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     try {
                     val nowElapsed = SystemClock.elapsedRealtime()
                     val studyActive = isStudyProtectionActive()
+                    updateYouTubeWarning(packageName, nowElapsed, studyActive)
                     val today = usageDayKey()
 
                     if (today != currentUsageDay) {
@@ -120,6 +130,71 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun updateYouTubeWarning(
+        packageName: String?,
+        nowElapsed: Long,
+        studyActive: Boolean
+    ) {
+        val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        val isYouTubeForeground = packageName != null &&
+            ScreenTimePolicy.categoryFor(this, packageName) == "youtube_special"
+        if (!studyActive || !isYouTubeForeground || !isScreenInteractive() ||
+            keyguard.isKeyguardLocked) {
+            youtubeWarningStartedAtElapsed = 0L
+            return
+        }
+
+        if (youtubeWarningStartedAtElapsed == 0L) {
+            youtubeWarningStartedAtElapsed = nowElapsed
+            return
+        }
+
+        val intervalMs = ScreenTimePolicy.youtubeWarningMinutes(this) * 60_000L
+        if (nowElapsed - youtubeWarningStartedAtElapsed >= intervalMs) {
+            postYouTubeWarning()
+            youtubeWarningStartedAtElapsed = nowElapsed
+        }
+    }
+
+    private fun postYouTubeWarning() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED) return
+
+        try {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= 26) {
+                val channel = NotificationChannel(
+                    YOUTUBE_WARNING_CHANNEL,
+                    "YouTube time reminders",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Periodic reminders while YouTube is open during Study Protection."
+                }
+                manager.createNotificationChannel(channel)
+            }
+
+            val builder = if (Build.VERSION.SDK_INT >= 26) {
+                Notification.Builder(this, YOUTUBE_WARNING_CHANNEL)
+            } else {
+                Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
+            }
+            val notification = builder
+                .setSmallIcon(applicationInfo.icon)
+                .setContentTitle("YOUTUBE TIME CHECK")
+                .setContentText("5 minutes have passed on YouTube. Stay focused on your learning goal.")
+                .setCategory(Notification.CATEGORY_REMINDER)
+                .setAutoCancel(true)
+                .build()
+            manager.notify(youtubeWarningNotificationId++, notification)
+        } catch (error: Exception) {
+            Log.w("ShadowLearnerAccess", "Could not post YouTube reminder", error)
+        }
+    }
+
+    companion object {
+        private const val YOUTUBE_WARNING_CHANNEL = "youtube_time_reminders"
+    }
     private fun isStudyProtectionActive(): Boolean {
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         return prefs.getBoolean(KEY_ACTIVE, false) ||
