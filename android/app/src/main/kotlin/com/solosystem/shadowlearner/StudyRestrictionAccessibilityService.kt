@@ -171,6 +171,9 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 ?: return
 
             lastKnownForegroundPackageForTimer = openedPackage
+            if (ScreenTimePolicy.shouldPauseQuestTimerForPackage(this, openedPackage)) {
+                ScreenTimePolicy.pauseRunningQuestTimer(this)
+            }
             if (currentForegroundPackage != openedPackage) {
                 currentForegroundPackage = openedPackage
                 // Do not query the complete UsageStats event history on Android's
