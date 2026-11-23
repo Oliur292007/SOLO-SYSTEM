@@ -54,7 +54,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     private var lastRedirectAt = 0L
     private var lastBlockedPackage: String? = null
     private var currentUsageDay = usageDayKey()
-    private var youtubeWarningStartedAtElapsed = 0L
+    @Volatile private var youtubeWarningStartedAtElapsed = 0L
     private var youtubeWarningNotificationId = 54_000
 
     private val screenTimeCheck = object : Runnable {
@@ -245,6 +245,9 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 ?: return
 
             lastKnownForegroundPackageForTimer = openedPackage
+            if (ScreenTimePolicy.categoryFor(this, openedPackage) != "youtube_special") {
+                youtubeWarningStartedAtElapsed = 0L
+            }
             if (ScreenTimePolicy.shouldPauseQuestTimerForPackage(this, openedPackage)) {
                 ScreenTimePolicy.pauseRunningQuestTimer(this)
             }
