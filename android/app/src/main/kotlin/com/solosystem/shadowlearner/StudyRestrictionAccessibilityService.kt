@@ -54,7 +54,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             val packageName = currentForegroundPackage
             try {
                 usageWorker.execute {
-                try {
+                    try {
                     val nowElapsed = SystemClock.elapsedRealtime()
                     val studyActive = isStudyProtectionActive()
                     val today = usageDayKey()
@@ -106,7 +106,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     handler.post {
                         if (isConnected) scheduleMonitoring(10_000L)
                     }
-                }
+                    }
                 }
             } catch (error: RejectedExecutionException) {
                 usageCheckInFlight.set(false)
