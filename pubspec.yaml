@@ -2,7 +2,7 @@ name: shadow_learner
 description: Shadow Learner — productivity and personal progression by Solo System.
 publish_to: 'none'
 
-version: 4.1.17+126
+version: 4.1.18+127
 environment:
   sdk: '>=3.8.0 <4.0.0'
 
