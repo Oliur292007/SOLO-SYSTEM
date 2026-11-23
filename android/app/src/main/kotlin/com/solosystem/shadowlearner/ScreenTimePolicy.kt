@@ -94,6 +94,7 @@ object ScreenTimePolicy {
         if (normalized == "android" || normalized.contains("systemui") ||
             normalized.contains("permissioncontroller")) return false
 
+        // Only the Education and YouTube special categories keep the Quest Timer alive.
         val category = categoryFor(context, packageName)
         return category != "education" && category != "youtube_special"
     }
