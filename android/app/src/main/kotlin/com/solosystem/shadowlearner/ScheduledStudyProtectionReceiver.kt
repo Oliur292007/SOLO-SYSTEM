@@ -168,14 +168,18 @@ class ScheduledStudyProtectionReceiver : BroadcastReceiver() {
                 val todayFlutter = if (now.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY) 7
                     else now.get(Calendar.DAY_OF_WEEK) - 1
                 val daysBack = (todayFlutter - day + 7) % 7
-                start.add(Calendar.DAY_OF_YEAR, -daysBack)
-                start.set(Calendar.HOUR_OF_DAY, hour)
-                start.set(Calendar.MINUTE, minute)
-                start.set(Calendar.SECOND, 0)
-                start.set(Calendar.MILLISECOND, 0)
-                val end = start.clone() as Calendar
-                end.add(Calendar.MINUTE, duration)
-                if (!now.before(start) && now.before(end)) return true
+                // Also inspect yesterday's occurrence: a schedule may cross midnight.
+                for (extraDay in 0..1) {
+                    val occurrence = start.clone() as Calendar
+                    occurrence.add(Calendar.DAY_OF_YEAR, -(daysBack + extraDay))
+                    occurrence.set(Calendar.HOUR_OF_DAY, hour)
+                    occurrence.set(Calendar.MINUTE, minute)
+                    occurrence.set(Calendar.SECOND, 0)
+                    occurrence.set(Calendar.MILLISECOND, 0)
+                    val end = occurrence.clone() as Calendar
+                    end.add(Calendar.MINUTE, duration)
+                    if (!now.before(occurrence) && now.before(end)) return true
+                }
             }
             return false
         }
