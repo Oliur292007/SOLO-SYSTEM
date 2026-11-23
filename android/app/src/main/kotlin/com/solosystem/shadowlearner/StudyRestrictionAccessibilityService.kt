@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -31,7 +32,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private val usageWorker = Executors.newSingleThreadExecutor()
+    @Volatile private var usageWorker = Executors.newSingleThreadExecutor()
     private val usageCheckInFlight = AtomicBoolean(false)
 
     @Volatile private var currentForegroundPackage: String? = null
@@ -51,7 +52,8 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             }
 
             val packageName = currentForegroundPackage
-            usageWorker.execute {
+            try {
+                usageWorker.execute {
                 try {
                     val nowElapsed = SystemClock.elapsedRealtime()
                     val studyActive = isStudyProtectionActive()
@@ -105,6 +107,10 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                         if (isConnected) scheduleMonitoring(10_000L)
                     }
                 }
+            } catch (error: RejectedExecutionException) {
+                usageCheckInFlight.set(false)
+                Log.w("ShadowLearnerAccess", "Usage worker is restarting", error)
+                scheduleMonitoring(1_000L)
             }
         }
     }
@@ -124,6 +130,14 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        if (usageWorker.isShutdown || usageWorker.isTerminated) {
+            usageWorker = Executors.newSingleThreadExecutor()
+        }
+        usageCheckInFlight.set(false)
+        currentForegroundPackage = runCatching {
+            rootInActiveWindow?.packageName?.toString()?.takeIf { it.isNotBlank() }
+        }.getOrNull()
+        lastUsageTickElapsed = SystemClock.elapsedRealtime()
         isConnected = true
         Log.i("ShadowLearnerAccess", "Accessibility service connected")
         serviceInfo = serviceInfo.apply {
