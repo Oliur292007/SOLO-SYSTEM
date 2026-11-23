@@ -696,7 +696,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   }
 
   Future<void> _showFirstLaunchSetup() async {
-    const onboardingVersion = 6;
+    const onboardingVersion = 7;
     const onboardingVersionKey = 'first_launch_onboarding_version';
     final prefs = await SharedPreferences.getInstance();
     if ((prefs.getInt(onboardingVersionKey) ?? 0) >= onboardingVersion) {
@@ -710,9 +710,9 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
       builder: (dialogContext) => AlertDialog(
         title: const Text('SET UP SHADOW LEARNER PERMISSIONS'),
         content: const Text(
-          'Enable mission notifications and Study App Protection. '
-          'Notifications can be allowed in the next Android prompt. '
-          'Study App Protection needs one manual step in Android Accessibility Settings.',
+          'Complete the permission checklist for Notifications, Exact Alarms, '
+          'App Usage Access, Accessibility and background/battery settings. '
+          'Android will ask you to approve special access in its own Settings screens.',
         ),
         actions: [
           TextButton(
@@ -721,125 +721,22 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('CONTINUE'),
+            child: const Text('OPEN PERMISSION SETUP'),
           ),
         ],
       ),
     );
 
-    if (continueSetup != true || !mounted) {
-      await prefs.setInt(onboardingVersionKey, onboardingVersion);
-      return;
-    }
-
-    bool notificationsEnabled = false;
-    try {
-      notificationsEnabled =
-          await widget.notificationService.requestPermission();
-      if (notificationsEnabled) {
-        await _syncMissionNotificationsSafely();
-        await widget.notificationService.showPermissionConfirmation();
-      }
-    } catch (error) {
-      debugPrint('NOTIFICATION PERMISSION ERROR: $error');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Notification setup failed: $error')),
-        );
-      }
-    }
     if (!mounted) return;
-
-    if (!notificationsEnabled) {
-      final openNotificationSettings = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('ALLOW NOTIFICATIONS'),
-          content: const Text(
-            'Shadow Learner cannot confirm that notifications are allowed. '
-            'Open App Info > Notifications and enable notifications for Shadow Learner. '
-            'Then return to the app; mission reminders will be scheduled again.',
+    if (continueSetup == true) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PermissionManagementPage(
+            notificationService: widget.notificationService,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('LATER'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('OPEN NOTIFICATION SETTINGS'),
-            ),
-          ],
         ),
       );
-      if (openNotificationSettings == true) {
-        try {
-          await _appRestrictionChannel.invokeMethod<void>(
-            'openAppNotificationSettings',
-          );
-        } catch (error) {
-          debugPrint('OPEN NOTIFICATION SETTINGS ERROR: $error');
-        }
-      }
     }
-
-    bool accessibilityEnabled = false;
-    try {
-      accessibilityEnabled =
-          await _appRestrictionChannel.invokeMethod<bool>(
-                'isAccessibilityEnabled',
-              ) ??
-              false;
-    } catch (error) {
-      debugPrint('ACCESSIBILITY STATUS ERROR: $error');
-    }
-
-    if (!accessibilityEnabled && mounted) {
-      final openSettings = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('ENABLE STUDY APP PROTECTION'),
-          content: const Text(
-            'Study App Protection needs your approval in Android. Follow these steps in order:\n\n'
-            'STEP 1 — Open Accessibility Settings using the button below. Find Shadow Learner. If Android does not allow you to switch it on yet, return to the Home Screen.\n\n'
-            'STEP 2 — Find the Shadow Learner icon on your Home Screen. Press and hold it, then choose App info.\n\n'
-            'STEP 3 — In App info, tap the three-dot menu in the top-right corner. Choose Allow restricted settings and confirm. If you cannot see this option, make sure you completed Step 1 first.\n\n'
-            'STEP 4 — Open Shadow Learner again. Go to Security and choose Set Up Study App Protection.\n\n'
-            'STEP 5 — Open Shadow Learner in Accessibility Settings and switch on its service. Read the Android permission warning carefully, then confirm if you agree.\n\n'
-            'HOW IT WORKS: While a mission timer is running, Shadow Learner can send you back to the Home Screen if you try to open another app. This does not uninstall or permanently lock other apps. You can turn the Accessibility service off at any time in Android Settings.',
-          ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('DO THIS LATER'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('OPEN ACCESSIBILITY SETTINGS'),
-          ),
-        ],
-      ),
-    );
-
-      if (openSettings == true && mounted) {
-        try {
-          await _appRestrictionChannel.invokeMethod<void>(
-            'openAccessibilitySettings',
-          );
-        } on PlatformException catch (error) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Could not open Accessibility Settings: ${error.message}',
-              ),
-            ),
-          );
-        }
-      }
-    }
-
     await prefs.setInt(onboardingVersionKey, onboardingVersion);
   }
 

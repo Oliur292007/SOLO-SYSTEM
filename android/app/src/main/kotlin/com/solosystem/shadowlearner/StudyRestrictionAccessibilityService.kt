@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 
 /**
@@ -35,47 +36,53 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
 
     private val screenTimeCheck = object : Runnable {
         override fun run() {
-            val packageName = currentForegroundPackage
-            val nowElapsed = SystemClock.elapsedRealtime()
-            val today = usageDayKey()
-            if (today != currentUsageDay) {
-                currentUsageDay = today
-                currentSessionUsageMs = if (packageName == null) 0L else
-                    ScreenTimePolicy.usageByPackage(this@StudyRestrictionAccessibilityService)[packageName] ?: 0L
-                lastUsageTickElapsed = nowElapsed
-            }
-            if (lastUsageTickElapsed > 0L && isScreenInteractive()) {
-                currentSessionUsageMs += (nowElapsed - lastUsageTickElapsed).coerceAtLeast(0L)
-            }
-            lastUsageTickElapsed = nowElapsed
-
-            val studyActive = getSharedPreferences(PREFS, MODE_PRIVATE)
-                .getBoolean(KEY_ACTIVE, false)
-            // Study Protection always takes precedence over daily Screen Time.
-            // Never consult Screen Time categories or whitelist while it is active.
-            if (packageName != null && studyActive && !isSystemAllowedPackage(packageName)) {
-                redirectHome(packageName)
-            } else if (packageName != null &&
-                !studyActive &&
-                ScreenTimePolicy.hasUsageAccess(this@StudyRestrictionAccessibilityService) &&
-                !isSystemAllowedPackage(packageName)
-            ) {
-                val usage = ScreenTimePolicy.usageByPackage(
-                    this@StudyRestrictionAccessibilityService
-                )
-                val reportedUsage = usage[packageName] ?: 0L
-                val estimatedUsage = maxOf(reportedUsage, currentSessionUsageMs)
-                if (ScreenTimePolicy.limitReachedForUsage(
-                        this@StudyRestrictionAccessibilityService,
-                        packageName,
-                        estimatedUsage,
-                        usage
-                    )
-                ) {
-                    redirectHome(packageName)
+            try {
+                val packageName = currentForegroundPackage
+                val nowElapsed = SystemClock.elapsedRealtime()
+                val today = usageDayKey()
+                if (today != currentUsageDay) {
+                    currentUsageDay = today
+                    currentSessionUsageMs = if (packageName == null) 0L else
+                        ScreenTimePolicy.usageByPackage(this@StudyRestrictionAccessibilityService)[packageName] ?: 0L
+                    lastUsageTickElapsed = nowElapsed
                 }
+                if (lastUsageTickElapsed > 0L && isScreenInteractive()) {
+                    currentSessionUsageMs += (nowElapsed - lastUsageTickElapsed).coerceAtLeast(0L)
+                }
+                lastUsageTickElapsed = nowElapsed
+
+                val studyActive = getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .getBoolean(KEY_ACTIVE, false)
+                // Study Protection always takes precedence over daily Screen Time.
+                // Never consult Screen Time categories or whitelist while it is active.
+                if (packageName != null && studyActive && !isSystemAllowedPackage(packageName)) {
+                    redirectHome(packageName)
+                } else if (packageName != null &&
+                    !studyActive &&
+                    ScreenTimePolicy.hasUsageAccess(this@StudyRestrictionAccessibilityService) &&
+                    !isSystemAllowedPackage(packageName)
+                ) {
+                    val usage = ScreenTimePolicy.usageByPackage(
+                        this@StudyRestrictionAccessibilityService
+                    )
+                    val reportedUsage = usage[packageName] ?: 0L
+                    val estimatedUsage = maxOf(reportedUsage, currentSessionUsageMs)
+                    if (ScreenTimePolicy.limitReachedForUsage(
+                            this@StudyRestrictionAccessibilityService,
+                            packageName,
+                            estimatedUsage,
+                            usage
+                        )
+                    ) {
+                        redirectHome(packageName)
+                    }
+                }
+            } catch (error: Exception) {
+                // A failed usage query must not permanently kill the monitoring loop.
+                Log.e("ShadowLearnerAccess", "Policy monitoring tick failed", error)
+            } finally {
+                if (isConnected) handler.postDelayed(this, 10_000L)
             }
-            handler.postDelayed(this, 10_000L)
         }
     }
 
@@ -91,44 +98,49 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         lastRedirectAt = 0L
         lastBlockedPackage = null
         handler.removeCallbacks(screenTimeCheck)
-        handler.postDelayed(screenTimeCheck, 10_000L)
+        handler.post(screenTimeCheck)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null) return
-        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
-        ) return
+        try {
+            if (event == null) return
+            if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
+            ) return
 
-        val foregroundPackage = rootInActiveWindow?.packageName?.toString()
-            ?.takeIf { it.isNotBlank() }
-        val openedPackage = foregroundPackage
-            ?: event.packageName?.toString()?.takeIf { it.isNotBlank() }
-            ?: return
+            val foregroundPackage = rootInActiveWindow?.packageName?.toString()
+                ?.takeIf { it.isNotBlank() }
+            val openedPackage = foregroundPackage
+                ?: event.packageName?.toString()?.takeIf { it.isNotBlank() }
+                ?: return
 
-        if (currentForegroundPackage != openedPackage) {
-            currentForegroundPackage = openedPackage
-            currentSessionUsageMs =
-                ScreenTimePolicy.usageByPackage(this)[openedPackage] ?: 0L
-            lastUsageTickElapsed = SystemClock.elapsedRealtime()
-        }
-        val studyProtectionActive = getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getBoolean(KEY_ACTIVE, false)
+            if (currentForegroundPackage != openedPackage) {
+                currentForegroundPackage = openedPackage
+                currentSessionUsageMs =
+                    ScreenTimePolicy.usageByPackage(this)[openedPackage] ?: 0L
+                lastUsageTickElapsed = SystemClock.elapsedRealtime()
+            }
+            val studyProtectionActive = getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getBoolean(KEY_ACTIVE, false)
 
-        if (isSystemAllowedPackage(openedPackage)) return
+            if (isSystemAllowedPackage(openedPackage)) return
 
-        // Study Protection is a global app lock. It takes priority over all
-        // Screen Time categories, limits, and approved-app lists.
-        if (studyProtectionActive) {
-            redirectHome(openedPackage)
-            return
-        }
+            // Study Protection is a global app lock. It takes priority over all
+            // Screen Time categories, limits, and approved-app lists.
+            if (studyProtectionActive) {
+                redirectHome(openedPackage)
+                return
+            }
 
-        // Daily category limits run independently when Study Protection is off.
-        if (ScreenTimePolicy.hasUsageAccess(this) &&
-            ScreenTimePolicy.isLimitReached(this, openedPackage)
-        ) {
-            redirectHome(openedPackage)
+            // Daily category limits run independently when Study Protection is off.
+            if (ScreenTimePolicy.hasUsageAccess(this) &&
+                ScreenTimePolicy.isLimitReached(this, openedPackage)
+            ) {
+                redirectHome(openedPackage)
+            }
+        } catch (error: Exception) {
+            // An isolated event-processing error must not crash the Accessibility service.
+            Log.e("ShadowLearnerAccess", "Accessibility event processing failed", error)
         }
     }
 
@@ -179,11 +191,17 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
-        handler.removeCallbacks(screenTimeCheck)
+        // Android may interrupt accessibility feedback without disconnecting
+        // the service. Keep policy monitoring alive instead of cancelling it.
+        if (isConnected) {
+            handler.removeCallbacks(screenTimeCheck)
+            handler.post(screenTimeCheck)
+        }
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
         isConnected = false
+        handler.removeCallbacks(screenTimeCheck)
         return super.onUnbind(intent)
     }
 
