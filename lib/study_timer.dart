@@ -109,6 +109,7 @@ class StudyTimer extends ChangeNotifier {
     _ticker = null;
     final prefs = await SharedPreferences.getInstance();
     // Native AccessibilityService may have paused the timer while Flutter was backgrounded.
+    // Refresh the plugin cache so Dart reads the native SharedPreferences write.
     await prefs.reload();
 
     activeQuestId = prefs.getString(_questIdKey);
