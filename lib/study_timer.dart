@@ -108,6 +108,7 @@ class StudyTimer extends ChangeNotifier {
     _ticker?.cancel();
     _ticker = null;
     final prefs = await SharedPreferences.getInstance();
+    // Native AccessibilityService may have paused the timer while Flutter was backgrounded.
     await prefs.reload();
 
     activeQuestId = prefs.getString(_questIdKey);
