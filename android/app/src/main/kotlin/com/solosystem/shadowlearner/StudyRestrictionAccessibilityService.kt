@@ -40,7 +40,8 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 val packageName = currentForegroundPackage
                 val nowElapsed = SystemClock.elapsedRealtime()
                 val studyActive = getSharedPreferences(PREFS, MODE_PRIVATE)
-                    .getBoolean(KEY_ACTIVE, false)
+                    .getBoolean(KEY_ACTIVE, false) || getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .getBoolean(ScheduledStudyProtectionReceiver.KEY_SCHEDULE_ACTIVE, false)
                 val today = usageDayKey()
                 if (today != currentUsageDay) {
                     currentUsageDay = today
