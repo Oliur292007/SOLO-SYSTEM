@@ -243,9 +243,14 @@ object ScreenTimePolicy {
 
     private fun isEducationName(value: String): Boolean {
         val terms = listOf(
-            "udvash", "unmesh", "shikho", "10minuteschool", "khanacademy",
-            "coursera", "edx", "classroom", "education", "learning",
-            "study", "school", "byjus", "quizlet", "duolingo"
+            "udvash", "unmesh", "shikho", "10minuteschool", "10 minute school",
+            "bohubrihi", "khanacademy", "khan academy", "coursera", "edx",
+            "classroom", "education", "learning", "study", "school",
+            "byjus", "toppr", "vedantu", "udemy", "skillshare", "brilliant",
+            "quizlet", "quizizz", "duolingo", "photomath", "symbolab",
+            "geogebra", "wolfram", "socratic", "brainly", "moodle",
+            "blackboard", "schoology", "edmodo", "sololearn", "codecademy",
+            "w3schools", "grasshopper", "mimo", "programming hero", "exam prep"
         )
         return terms.any { value.contains(it) }
     }
