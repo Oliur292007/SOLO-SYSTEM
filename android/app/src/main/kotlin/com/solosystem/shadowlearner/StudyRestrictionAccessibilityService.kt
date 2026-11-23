@@ -29,6 +29,10 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         @Volatile
         var isConnected: Boolean = false
             private set
+
+        @Volatile
+        var lastKnownForegroundPackageForTimer: String? = null
+            private set
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -138,6 +142,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         currentForegroundPackage = runCatching {
             rootInActiveWindow?.packageName?.toString()?.takeIf { it.isNotBlank() }
         }.getOrNull()
+        lastKnownForegroundPackageForTimer = currentForegroundPackage
         lastUsageTickElapsed = SystemClock.elapsedRealtime()
         isConnected = true
         Log.i("ShadowLearnerAccess", "Accessibility service connected")
@@ -165,6 +170,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 ?: event.packageName?.toString()?.takeIf { it.isNotBlank() }
                 ?: return
 
+            lastKnownForegroundPackageForTimer = openedPackage
             if (currentForegroundPackage != openedPackage) {
                 currentForegroundPackage = openedPackage
                 // Do not query the complete UsageStats event history on Android's
