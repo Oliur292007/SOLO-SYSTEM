@@ -81,18 +81,24 @@ object ScreenTimePolicy {
         val foregroundPackage = StudyRestrictionAccessibilityService.lastKnownForegroundPackageForTimer
             ?: mostRecentForegroundPackage(context)
             ?: return true
-        return shouldPauseQuestTimerForPackage(context, foregroundPackage)
+        return shouldPauseQuestTimerForPackage(
+            context, foregroundPackage, ignoreSystemUiOverlay = false
+        )
     }
 
-    fun shouldPauseQuestTimerForPackage(context: Context, packageName: String): Boolean {
+    fun shouldPauseQuestTimerForPackage(
+        context: Context,
+        packageName: String,
+        ignoreSystemUiOverlay: Boolean = true
+    ): Boolean {
         if (!isScreenInteractiveAndUnlocked(context)) return false
         if (packageName == context.packageName) return false
 
         // System UI overlays (notification shade / quick settings) are not an
         // intentional app switch. The home launcher is deliberately not exempt.
         val normalized = packageName.lowercase()
-        if (normalized == "android" || normalized.contains("systemui") ||
-            normalized.contains("permissioncontroller")) return false
+        if (normalized == "android" || normalized.contains("permissioncontroller") ||
+            (ignoreSystemUiOverlay && normalized.contains("systemui"))) return false
 
         // Only the Education and YouTube special categories keep the Quest Timer alive.
         val category = categoryFor(context, packageName)
