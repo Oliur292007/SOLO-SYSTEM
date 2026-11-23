@@ -596,9 +596,17 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
       unawaited(_checkForAppUpdate());
       if (widget.cloudProgressSync.isPaired) _syncCloudAndRefresh();
       unawaited(_syncMissionNotificationsSafely());
-    } else if (state == AppLifecycleState.paused &&
-        widget.cloudProgressSync.isPaired) {
-      unawaited(widget.cloudProgressSync.syncNow());
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      // Pause immediately when the user leaves Shadow Learner. This covers
+      // switching apps, opening system UI, removing the task from Recents,
+      // and normal app shutdown. The remaining duration is persisted.
+      unawaited(widget.studyTimer.pause());
+      if (state == AppLifecycleState.paused &&
+          widget.cloudProgressSync.isPaired) {
+        unawaited(widget.cloudProgressSync.syncNow());
+      }
     }
   }
 
