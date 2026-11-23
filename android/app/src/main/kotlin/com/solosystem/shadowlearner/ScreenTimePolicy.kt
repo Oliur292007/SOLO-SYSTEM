@@ -77,27 +77,62 @@ object ScreenTimePolicy {
      * and keyguard states are not treated as leaving for another app.
      */
     fun shouldPauseQuestTimer(context: Context): Boolean {
-        val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        if (!power.isInteractive) return false
-
-        val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-        if (keyguard.isKeyguardLocked) return false
-
         val foregroundPackage = mostRecentForegroundPackage(context)
             ?: StudyRestrictionAccessibilityService.lastKnownForegroundPackageForTimer
-            ?: return true
+            ?: return shouldPauseForCurrentDeviceState(context, null)
+        return shouldPauseQuestTimerForPackage(context, foregroundPackage)
+    }
 
-        if (foregroundPackage == context.packageName) return false
+    fun shouldPauseQuestTimerForPackage(context: Context, packageName: String): Boolean {
+        if (!shouldPauseForCurrentDeviceState(context, packageName)) return false
+        if (packageName == context.packageName) return false
 
-        // System UI overlays are not an intentional app switch. The home launcher is not exempt.
-        val normalized = foregroundPackage.lowercase()
+        // System UI overlays (notification shade / quick settings) are not an
+        // intentional app switch. The home launcher is deliberately not exempt.
+        val normalized = packageName.lowercase()
         if (normalized == "android" || normalized.contains("systemui") ||
             normalized.contains("permissioncontroller")) return false
 
-        val category = categoryFor(context, foregroundPackage)
+        val category = categoryFor(context, packageName)
         return category != "education" && category != "youtube_special"
     }
 
+    private fun shouldPauseForCurrentDeviceState(
+        context: Context,
+        packageName: String?
+    ): Boolean {
+        val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!power.isInteractive) return false
+        val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        if (keyguard.isKeyguardLocked) return false
+        return packageName != null
+    }
+
+    /**
+     * Persist a pause directly to Flutter's preferences as a process-death
+     * fallback. The Flutter lifecycle callback also pauses the in-memory timer.
+     */
+    fun pauseRunningQuestTimer(context: Context) {
+        val prefs = context.getSharedPreferences(
+            "FlutterSharedPreferences", Context.MODE_PRIVATE
+        )
+        if (!prefs.getBoolean("flutter.timer_running", false)) return
+        if (prefs.getString("flutter.timer_quest_id", null).isNullOrBlank()) return
+
+        val endTime = prefs.getLong("flutter.timer_end_time", 0L)
+        val remaining = if (endTime > 0L) {
+            kotlin.math.ceil((endTime - System.currentTimeMillis()) / 1000.0)
+                .toInt().coerceAtLeast(0)
+        } else {
+            prefs.getInt("flutter.timer_remaining", 0).coerceAtLeast(0)
+        }
+        prefs.edit()
+            .putInt("flutter.timer_remaining", remaining)
+            .putBoolean("flutter.timer_running", false)
+            .putBoolean("flutter.timer_finished", remaining == 0)
+            .remove("flutter.timer_end_time")
+            .commit()
+    }
     private fun mostRecentForegroundPackage(context: Context): String? {
         if (!hasUsageAccess(context)) return null
         val manager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
