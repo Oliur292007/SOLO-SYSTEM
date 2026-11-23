@@ -31,7 +31,8 @@
             android:label="Shadow Learner Study Protection"
             android:description="@string/study_protection_service_description"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:exported="true">
+            android:exported="true"
+            android:stopWithTask="false">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>

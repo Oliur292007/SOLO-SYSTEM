@@ -258,14 +258,29 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
           const Text('APP PERMISSION MANAGEMENT',
               style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
           const SizedBox(height: 8),
-          const Text('Check each permission here. Android may require you to enable it in system settings.'),
+          const Text('Tap each item to open the required Android permission screen. Return here afterward; the status refreshes automatically.'),
           const SizedBox(height: 14),
           _permissionTile(
             icon: Icons.notifications_active_outlined,
             title: 'Notifications',
             subtitle: 'Mission reminders, rewards and System updates',
             enabled: _notificationsEnabled,
-            onTap: () => _open('openAppNotificationSettings'),
+            onTap: () async {
+              bool granted = false;
+              try {
+                granted = await widget.notificationService.requestPermission();
+                if (granted) {
+                  await widget.notificationService.showPermissionConfirmation();
+                }
+              } catch (error) {
+                debugPrint('NOTIFICATION PERMISSION REQUEST ERROR: $error');
+              }
+              if (!mounted) return;
+              if (!granted) {
+                await _open('openAppNotificationSettings');
+              }
+              await _refresh();
+            },
           ),
           _permissionTile(
             icon: Icons.alarm,
@@ -337,10 +352,21 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
               ),
             ),
           ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.battery_charging_full),
+              title: const Text('Background / Battery Optimization'),
+              subtitle: const Text(
+                'For reliable Study Protection, open App Info > Battery and choose Unrestricted or Allow background activity if available. On Infinix/XOS, also allow Auto-start or Background launch if those options are available.',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _open('openAppDetailsSettings'),
+            ),
+          ),
           _permissionTile(
             icon: Icons.app_settings_alt,
             title: 'App Info & Restricted Settings',
-            subtitle: 'Open Android App Info to manage restricted settings and other app permissions',
+            subtitle: 'Open Android App Info to manage Allow restricted settings and other app permissions',
             enabled: true,
             onTap: () => _open('openAppDetailsSettings'),
           ),
