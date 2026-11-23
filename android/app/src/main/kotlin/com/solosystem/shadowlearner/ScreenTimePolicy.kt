@@ -22,6 +22,7 @@ object ScreenTimePolicy {
     private const val KEY_SOCIAL_LIMIT = "social_limit_minutes"
     private const val KEY_GAME_LIMIT = "game_limit_minutes"
     private const val KEY_YOUTUBE_WARNING = "youtube_warning_minutes"
+    private const val KEY_TIMER_ALLOWED_EDUCATION = "quest_timer_allowed_education_packages"
 
     fun hasUsageAccess(context: Context): Boolean {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
@@ -71,6 +72,28 @@ object ScreenTimePolicy {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getInt(KEY_YOUTUBE_WARNING, 5).coerceAtLeast(1)
 
+    fun syncQuestTimerEducationApps(context: Context, packages: List<String>) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putStringSet(KEY_TIMER_ALLOWED_EDUCATION, packages.toSet())
+            .apply()
+    }
+
+    fun educationApps(context: Context): List<Map<String, String>> = runCatching {
+        context.packageManager.getInstalledApplications(0)
+            .asSequence()
+            .filter { it.packageName != context.packageName }
+            .filter { context.packageManager.getLaunchIntentForPackage(it.packageName) != null }
+            .filter { categoryFor(context, it.packageName) == "education" }
+            .map { info ->
+                mapOf(
+                    "packageName" to info.packageName,
+                    "appName" to context.packageManager.getApplicationLabel(info).toString()
+                )
+            }
+            .sortedBy { it["appName"].orEmpty().lowercase() }
+            .toList()
+    }.getOrDefault(emptyList())
+
     /**
      * Decide whether leaving Shadow Learner should pause the Quest Timer.
      * Education apps and YouTube are intentional study destinations. Screen-off
@@ -100,9 +123,12 @@ object ScreenTimePolicy {
         if (normalized == "android" || normalized.contains("permissioncontroller") ||
             (ignoreSystemUiOverlay && normalized.contains("systemui"))) return false
 
-        // Only the Education and YouTube special categories keep the Quest Timer alive.
-        val category = categoryFor(context, packageName)
-        return category != "education" && category != "youtube_special"
+        // YouTube remains a built-in exception. Education apps are allowed only
+        // when the user explicitly selected them in at least one saved schedule.
+        if (categoryFor(context, packageName) == "youtube_special") return false
+        val selectedEducationApps = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet(KEY_TIMER_ALLOWED_EDUCATION, emptySet()) ?: emptySet()
+        return packageName !in selectedEducationApps
     }
 
     private fun isScreenInteractiveAndUnlocked(context: Context): Boolean {
