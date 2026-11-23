@@ -107,6 +107,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                         if (isConnected) scheduleMonitoring(10_000L)
                     }
                 }
+                }
             } catch (error: RejectedExecutionException) {
                 usageCheckInFlight.set(false)
                 Log.w("ShadowLearnerAccess", "Usage worker is restarting", error)
