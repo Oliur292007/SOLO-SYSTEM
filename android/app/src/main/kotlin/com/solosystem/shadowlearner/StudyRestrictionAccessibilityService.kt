@@ -336,6 +336,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean {
         Log.w("ShadowLearnerAccess", "Accessibility service unbound by Android")
         isConnected = false
+        // A reconnect must rediscover the foreground app instead of reusing stale state.
         lastKnownForegroundPackageForTimer = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
