@@ -596,9 +596,15 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
       unawaited(_checkForAppUpdate());
       if (widget.cloudProgressSync.isPaired) _syncCloudAndRefresh();
       unawaited(_syncMissionNotificationsSafely());
-    } else if (state == AppLifecycleState.paused &&
-        widget.cloudProgressSync.isPaired) {
-      unawaited(widget.cloudProgressSync.syncNow());
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      // Persist a paused Quest Timer whenever the app leaves the foreground.
+      unawaited(widget.studyTimer.pause());
+      if (state == AppLifecycleState.paused &&
+          widget.cloudProgressSync.isPaired) {
+        unawaited(widget.cloudProgressSync.syncNow());
+      }
     }
   }
 
