@@ -30,6 +30,11 @@ class MainActivity : FlutterActivity() {
                         ).apply()
                         result.success(true)
                     }
+                    "syncStudyProtectionSchedules" -> {
+                        val schedules = call.argument<List<Map<String, Any>>>("schedules") ?: emptyList()
+                        ScheduledStudyProtectionReceiver.sync(this, schedules)
+                        result.success(true)
+                    }
                     "getDailyUsage" -> result.success(ScreenTimePolicy.dailySummary(this))
                     "hasUsageAccess" -> result.success(ScreenTimePolicy.hasUsageAccess(this))
                     "openUsageAccessSettings" -> {
