@@ -336,6 +336,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean {
         Log.w("ShadowLearnerAccess", "Accessibility service unbound by Android")
         isConnected = false
+        lastKnownForegroundPackageForTimer = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
         return super.onUnbind(intent)
@@ -344,6 +345,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         Log.w("ShadowLearnerAccess", "Accessibility service destroyed")
         isConnected = false
+        lastKnownForegroundPackageForTimer = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
         super.onDestroy()
