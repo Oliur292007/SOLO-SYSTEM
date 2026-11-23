@@ -115,10 +115,15 @@ class _TimetablePageState extends State<TimetablePage> {
               setDialogState(() => isSaving = false);
 
               if (success) {
-                setState(() {
-                  selectedDay = day;
-                });
-                Navigator.pop(dialogContext);
+                // Close the dialog route before rebuilding its parent page.
+                // This avoids overlapping the dialog's inherited-widget teardown
+                // with a parent AnimatedBuilder rebuild after timetable notifyListeners.
+                Navigator.of(dialogContext).pop();
+                if (mounted) {
+                  setState(() {
+                    selectedDay = day;
+                  });
+                }
               } else {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
                   SnackBar(
