@@ -128,7 +128,7 @@ object ScreenTimePolicy {
             .putBoolean("flutter.timer_running", false)
             .putBoolean("flutter.timer_finished", remaining == 0)
             .remove("flutter.timer_end_time")
-            .commit()
+            .apply()
     }
     private fun mostRecentForegroundPackage(context: Context): String? {
         if (!hasUsageAccess(context)) return null
