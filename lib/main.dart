@@ -623,6 +623,8 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _questTimerPauseCheckTimer?.cancel();
+      // Reconcile in-memory timer state with native pause decisions made while backgrounded.
+      unawaited(widget.studyTimer.loadTimer(player: widget.player));
       unawaited(widget.securityController.refreshEmergencyUnlock());
       unawaited(_checkForAppUpdate());
       if (widget.cloudProgressSync.isPaired) _syncCloudAndRefresh();
