@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'timetable_system.dart';
 
 class TimetablePage extends StatefulWidget {
@@ -14,6 +15,9 @@ class TimetablePage extends StatefulWidget {
 }
 
 class _TimetablePageState extends State<TimetablePage> {
+  static const MethodChannel _appRestrictionChannel =
+      MethodChannel('solo_system/app_restriction');
+
   int selectedDay = DateTime.now().weekday;
 
   static const Color cyan = Color(0xFF00E5FF);
@@ -29,6 +33,22 @@ class _TimetablePageState extends State<TimetablePage> {
   Future<void> _showScheduleDialog({
     StudyScheduleItem? existing,
   }) async {
+    List<Map<String, String>> educationApps = [];
+    try {
+      final rawApps = await _appRestrictionChannel
+          .invokeMethod<List<dynamic>>('getEducationApps');
+      educationApps = (rawApps ?? []).map((item) {
+        final app = Map<String, dynamic>.from(item as Map);
+        return <String, String>{
+          'packageName': app['packageName']?.toString() ?? '',
+          'appName': app['appName']?.toString() ?? 'Unknown app',
+        };
+      }).where((app) => app['packageName']!.isNotEmpty).toList();
+    } catch (_) {
+      // The schedule form remains usable if native app discovery is unavailable.
+    }
+    if (!mounted) return;
+
     final subjectController = TextEditingController(
       text: existing?.subject ?? '',
     );
@@ -36,6 +56,10 @@ class _TimetablePageState extends State<TimetablePage> {
     int day = existing?.dayOfWeek ?? selectedDay;
     int duration = existing?.durationMinutes ?? 60;
     bool isOptional = existing?.isOptional ?? false;
+    final selectedEducationApps = <String>{
+      ...?existing?.allowedEducationApps,
+    };
+    String educationSearch = '';
     bool isSaving = false;
 
     TimeOfDay startTime = existing != null
@@ -51,6 +75,13 @@ class _TimetablePageState extends State<TimetablePage> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            final filteredEducationApps = educationApps.where((app) {
+              final query = educationSearch.trim().toLowerCase();
+              return query.isEmpty ||
+                  app['appName']!.toLowerCase().contains(query) ||
+                  app['packageName']!.toLowerCase().contains(query);
+            }).toList();
+
             Future<void> handleSave() async {
               if (isSaving) return;
 
@@ -90,6 +121,7 @@ class _TimetablePageState extends State<TimetablePage> {
                   startTime: formattedTime,
                   durationMinutes: duration,
                   isOptional: isOptional,
+                  allowedEducationApps: selectedEducationApps.toList(),
                 );
                 if (!success) {
                   errorMessage =
@@ -103,6 +135,7 @@ class _TimetablePageState extends State<TimetablePage> {
                   startTime: formattedTime,
                   durationMinutes: duration,
                   isOptional: isOptional,
+                  allowedEducationApps: selectedEducationApps.toList(),
                 );
                 if (!success) {
                   errorMessage =
@@ -233,6 +266,116 @@ class _TimetablePageState extends State<TimetablePage> {
                                 setDialogState(() => duration = value);
                               }
                             },
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'ALLOWED EDUCATION APPS',
+                            style: TextStyle(
+                              color: cyan,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Selected apps will keep Quest Timer running while you study.',
+                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${selectedEducationApps.length} app(s) selected',
+                            style: const TextStyle(
+                              color: cyan,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      enabled: !isSaving,
+                      onChanged: (value) =>
+                          setDialogState(() => educationSearch = value),
+                      decoration: const InputDecoration(
+                        hintText: 'Search Education apps',
+                        prefixIcon: Icon(Icons.search),
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 220,
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Theme.of(context).dividerColor,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: educationApps.isEmpty
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(14),
+                                child: Text(
+                                  'No installed apps were identified in the Education category.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            )
+                          : filteredEducationApps.isEmpty
+                              ? const Center(
+                                  child: Text('No matching apps found.'),
+                                )
+                              : ListView.builder(
+                                  itemCount: filteredEducationApps.length,
+                                  itemBuilder: (context, index) {
+                                    final app = filteredEducationApps[index];
+                                    final packageName = app['packageName']!;
+                                    final appName = app['appName']!;
+                                    final selected =
+                                        selectedEducationApps.contains(packageName);
+                                    return CheckboxListTile(
+                                      dense: true,
+                                      value: selected,
+                                      title: Text(
+                                        appName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      subtitle: Text(
+                                        packageName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 10),
+                                      ),
+                                      controlAffinity:
+                                          ListTileControlAffinity.leading,
+                                      onChanged: isSaving
+                                          ? null
+                                          : (value) {
+                                              setDialogState(() {
+                                                if (value == true) {
+                                                  selectedEducationApps
+                                                      .add(packageName);
+                                                } else {
+                                                  selectedEducationApps
+                                                      .remove(packageName);
+                                                }
+                                              });
+                                            },
+                                    );
+                                  },
+                                ),
                     ),
 
                     const SizedBox(height: 12),
