@@ -150,6 +150,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             return
         }
 
+        // The interval comes from Supabase config (default: five minutes).
         val intervalMinutes = ScreenTimePolicy.youtubeWarningMinutes(this)
         val intervalMs = intervalMinutes * 60_000L
         if (nowElapsed - youtubeWarningStartedAtElapsed >= intervalMs) {
