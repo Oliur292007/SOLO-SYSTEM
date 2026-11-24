@@ -87,7 +87,6 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
 
                     var shouldBlock = false
                     if (packageName != null &&
-                        !studyActive &&
                         !isSystemAllowedPackage(packageName) &&
                         ScreenTimePolicy.hasUsageAccess(this@StudyRestrictionAccessibilityService)
                     ) {
@@ -107,8 +106,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     if (shouldBlock && packageName != null) {
                         handler.post {
                             if (isConnected &&
-                                currentForegroundPackage == packageName &&
-                                !isStudyProtectionActive()
+                                currentForegroundPackage == packageName
                             ) {
                                 redirectHome(packageName)
                             }
@@ -267,7 +265,12 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             if (isStudyProtectionActive()) {
                 // Education / YouTube-special and explicitly allowed packages
                 // remain available during Study Protection.
-                if (ScreenTimePolicy.isStudyAllowed(this, openedPackage)) return
+                if (ScreenTimePolicy.isStudyAllowed(this, openedPackage)) {
+                    // YouTube is allowed during Study Protection, but daily
+                    // Screen Time monitoring must continue in the background.
+                    scheduleMonitoring()
+                    return
+                }
                 redirectHome(openedPackage)
                 return
             }
