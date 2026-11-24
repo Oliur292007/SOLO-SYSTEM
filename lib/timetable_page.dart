@@ -30,14 +30,11 @@ class _TimetablePageState extends State<TimetablePage> {
           ? const Color(0xFF8295B3)
           : const Color(0xFF5A6B85);
 
-  Future<void> _showScheduleDialog({
-    StudyScheduleItem? existing,
-  }) async {
-    List<Map<String, String>> educationApps = [];
+  Future<List<Map<String, String>>> _loadEducationApps() async {
     try {
       final rawApps = await _appRestrictionChannel
           .invokeMethod<List<dynamic>>('getEducationApps');
-      educationApps = (rawApps ?? []).map((item) {
+      return (rawApps ?? []).map((item) {
         final app = Map<String, dynamic>.from(item as Map);
         return <String, String>{
           'packageName': app['packageName']?.toString() ?? '',
@@ -45,8 +42,15 @@ class _TimetablePageState extends State<TimetablePage> {
         };
       }).where((app) => app['packageName']!.isNotEmpty).toList();
     } catch (_) {
-      // The schedule form remains usable if native app discovery is unavailable.
+      return [];
     }
+  }
+
+  Future<void> _showScheduleDialog({
+    StudyScheduleItem? existing,
+  }) async {
+    // Start discovery without waiting; show the schedule form immediately.
+    final educationAppsFuture = _loadEducationApps();
     if (!mounted) return;
 
     final subjectController = TextEditingController(
@@ -75,13 +79,6 @@ class _TimetablePageState extends State<TimetablePage> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final filteredEducationApps = educationApps.where((app) {
-              final query = educationSearch.trim().toLowerCase();
-              return query.isEmpty ||
-                  app['appName']!.toLowerCase().contains(query) ||
-                  app['packageName']!.toLowerCase().contains(query);
-            }).toList();
-
             Future<void> handleSave() async {
               if (isSaving) return;
 
@@ -321,8 +318,39 @@ class _TimetablePageState extends State<TimetablePage> {
                         ),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: educationApps.isEmpty
-                          ? const Center(
+                      child: FutureBuilder<List<Map<String, String>>>(
+                        future: educationAppsFuture,
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState != ConnectionState.done) {
+                            return const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Loading installed Education apps...',
+                                    style: TextStyle(fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          final educationApps = snapshot.data ?? [];
+                          final query = educationSearch.trim().toLowerCase();
+                          final filteredEducationApps = educationApps.where((app) {
+                            return query.isEmpty ||
+                                app['appName']!.toLowerCase().contains(query) ||
+                                app['packageName']!.toLowerCase().contains(query);
+                          }).toList();
+
+                          if (educationApps.isEmpty) {
+                            return const Center(
                               child: Padding(
                                 padding: EdgeInsets.all(14),
                                 child: Text(
@@ -331,51 +359,53 @@ class _TimetablePageState extends State<TimetablePage> {
                                   style: TextStyle(fontSize: 12),
                                 ),
                               ),
-                            )
-                          : filteredEducationApps.isEmpty
-                              ? const Center(
-                                  child: Text('No matching apps found.'),
-                                )
-                              : ListView.builder(
-                                  itemCount: filteredEducationApps.length,
-                                  itemBuilder: (context, index) {
-                                    final app = filteredEducationApps[index];
-                                    final packageName = app['packageName']!;
-                                    final appName = app['appName']!;
-                                    final selected =
-                                        selectedEducationApps.contains(packageName);
-                                    return CheckboxListTile(
-                                      dense: true,
-                                      value: selected,
-                                      title: Text(
-                                        appName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      subtitle: Text(
-                                        packageName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontSize: 10),
-                                      ),
-                                      controlAffinity:
-                                          ListTileControlAffinity.leading,
-                                      onChanged: isSaving
-                                          ? null
-                                          : (value) {
-                                              setDialogState(() {
-                                                if (value == true) {
-                                                  selectedEducationApps
-                                                      .add(packageName);
-                                                } else {
-                                                  selectedEducationApps
-                                                      .remove(packageName);
-                                                }
-                                              });
-                                            },
-                                    );
-                                  },
+                            );
+                          }
+                          if (filteredEducationApps.isEmpty) {
+                            return const Center(
+                              child: Text('No matching apps found.'),
+                            );
+                          }
+
+                          return ListView.builder(
+                            itemCount: filteredEducationApps.length,
+                            itemBuilder: (context, index) {
+                              final app = filteredEducationApps[index];
+                              final packageName = app['packageName']!;
+                              final appName = app['appName']!;
+                              final selected =
+                                  selectedEducationApps.contains(packageName);
+                              return CheckboxListTile(
+                                dense: true,
+                                value: selected,
+                                title: Text(
+                                  appName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
+                                subtitle: Text(
+                                  packageName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 10),
+                                ),
+                                controlAffinity: ListTileControlAffinity.leading,
+                                onChanged: isSaving
+                                    ? null
+                                    : (value) {
+                                        setDialogState(() {
+                                          if (value == true) {
+                                            selectedEducationApps.add(packageName);
+                                          } else {
+                                            selectedEducationApps.remove(packageName);
+                                          }
+                                        });
+                                      },
+                              );
+                            },
+                          );
+                        },
+                      ),
                     ),
 
                     const SizedBox(height: 12),
