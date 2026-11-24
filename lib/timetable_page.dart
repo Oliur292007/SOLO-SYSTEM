@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'timetable_system.dart';
 
 class TimetablePage extends StatefulWidget {
@@ -15,11 +14,7 @@ class TimetablePage extends StatefulWidget {
 }
 
 class _TimetablePageState extends State<TimetablePage> {
-  static const MethodChannel _appRestrictionChannel =
-      MethodChannel('solo_system/app_restriction');
-
   int selectedDay = DateTime.now().weekday;
-  bool _isPreparingSchedule = false;
 
   static const Color cyan = Color(0xFF00E5FF);
   static const Color blue = Color(0xFF00BFFF);
@@ -31,35 +26,10 @@ class _TimetablePageState extends State<TimetablePage> {
           ? const Color(0xFF8295B3)
           : const Color(0xFF5A6B85);
 
-  Future<List<Map<String, String>>> _loadEducationApps() async {
-    try {
-      final rawApps = await _appRestrictionChannel
-          .invokeMethod<List<dynamic>>('getEducationApps');
-      return (rawApps ?? []).map((item) {
-        final app = Map<String, dynamic>.from(item as Map);
-        return <String, String>{
-          'packageName': app['packageName']?.toString() ?? '',
-          'appName': app['appName']?.toString() ?? 'Unknown app',
-        };
-      }).where((app) => app['packageName']!.isNotEmpty).toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
   Future<void> _showScheduleDialog({
     StudyScheduleItem? existing,
   }) async {
-    // Discover Education apps before opening any route. A loading dialog
-    // followed by a second dialog caused the modal barrier to remain on screen
-    // on some devices, while the schedule form itself was never displayed.
-    if (!mounted || _isPreparingSchedule) return;
-    setState(() => _isPreparingSchedule = true);
-
-    final educationApps = await _loadEducationApps();
-
     if (!mounted) return;
-    setState(() => _isPreparingSchedule = false);
 
     final subjectController = TextEditingController(
       text: existing?.subject ?? '',
@@ -68,10 +38,6 @@ class _TimetablePageState extends State<TimetablePage> {
     int day = existing?.dayOfWeek ?? selectedDay;
     int duration = existing?.durationMinutes ?? 60;
     bool isOptional = existing?.isOptional ?? false;
-    final selectedEducationApps = <String>{
-      ...?existing?.allowedEducationApps,
-    };
-    String educationSearch = '';
     bool isSaving = false;
 
     TimeOfDay startTime = existing != null
@@ -127,7 +93,6 @@ class _TimetablePageState extends State<TimetablePage> {
                   startTime: formattedTime,
                   durationMinutes: duration,
                   isOptional: isOptional,
-                  allowedEducationApps: selectedEducationApps.toList(),
                 );
                 if (!success) {
                   errorMessage =
@@ -274,127 +239,6 @@ class _TimetablePageState extends State<TimetablePage> {
                             },
                     ),
 
-                    const SizedBox(height: 18),
-
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'ALLOWED EDUCATION APPS',
-                            style: TextStyle(
-                              color: cyan,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Apps selected in your saved schedules will keep Quest Timer running.',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${selectedEducationApps.length} app(s) selected',
-                            style: const TextStyle(
-                              color: cyan,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      enabled: !isSaving,
-                      onChanged: (value) =>
-                          setDialogState(() => educationSearch = value),
-                      decoration: const InputDecoration(
-                        hintText: 'Search Education apps',
-                        prefixIcon: Icon(Icons.search),
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      height: 220,
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Theme.of(context).dividerColor,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Builder(
-                        builder: (context) {
-                          final query = educationSearch.trim().toLowerCase();
-                          final filteredEducationApps = educationApps.where((app) {
-                            return query.isEmpty ||
-                                app['appName']!.toLowerCase().contains(query) ||
-                                app['packageName']!.toLowerCase().contains(query);
-                          }).toList();
-
-                          if (educationApps.isEmpty) {
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(14),
-                                child: Text(
-                                  'No installed apps were identified in the Education category.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                              ),
-                            );
-                          }
-                          if (filteredEducationApps.isEmpty) {
-                            return const Center(
-                              child: Text('No matching apps found.'),
-                            );
-                          }
-
-                          return ListView.builder(
-                            itemCount: filteredEducationApps.length,
-                            itemBuilder: (context, index) {
-                              final app = filteredEducationApps[index];
-                              final packageName = app['packageName']!;
-                              final appName = app['appName']!;
-                              final selected =
-                                  selectedEducationApps.contains(packageName);
-                              return CheckboxListTile(
-                                dense: true,
-                                value: selected,
-                                title: Text(
-                                  appName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: Text(
-                                  packageName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 10),
-                                ),
-                                controlAffinity: ListTileControlAffinity.leading,
-                                onChanged: isSaving
-                                    ? null
-                                    : (value) {
-                                        setDialogState(() {
-                                          if (value == true) {
-                                            selectedEducationApps.add(packageName);
-                                          } else {
-                                            selectedEducationApps.remove(packageName);
-                                          }
-                                        });
-                                      },
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-
                     const SizedBox(height: 12),
 
                     SwitchListTile(
@@ -493,22 +337,11 @@ class _TimetablePageState extends State<TimetablePage> {
         return Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           floatingActionButton: FloatingActionButton.extended(
-            onPressed: _isPreparingSchedule ? null : () => _showScheduleDialog(),
+            onPressed: () => _showScheduleDialog(),
             backgroundColor: blue,
             foregroundColor: Colors.white,
-            icon: _isPreparingSchedule
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.add),
-            label: Text(
-              _isPreparingSchedule ? 'PREPARING...' : 'ADD SCHEDULE',
-            ),
+            icon: const Icon(Icons.add),
+            label: const Text('ADD SCHEDULE'),
           ),
           body: SafeArea(
             child: ListView(
