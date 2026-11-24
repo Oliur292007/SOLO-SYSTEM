@@ -19,6 +19,7 @@ class _TimetablePageState extends State<TimetablePage> {
       MethodChannel('solo_system/app_restriction');
 
   int selectedDay = DateTime.now().weekday;
+  bool _isPreparingSchedule = false;
 
   static const Color cyan = Color(0xFF00E5FF);
   static const Color blue = Color(0xFF00BFFF);
@@ -49,31 +50,16 @@ class _TimetablePageState extends State<TimetablePage> {
   Future<void> _showScheduleDialog({
     StudyScheduleItem? existing,
   }) async {
-    // Resolve the native app scan before creating the form route. Keeping the
-    // asynchronous package-discovery Future outside the schedule dialog avoids
-    // rebuilding the dialog overlay while Android is returning the app list.
-    if (!mounted) return;
-    showDialog<void>(
-      context: context,
-      useRootNavigator: true,
-      barrierDismissible: false,
-      builder: (_) => const AlertDialog(
-        content: Row(
-          children: [
-            SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: 16),
-            Expanded(child: Text('Preparing schedule...')),
-          ],
-        ),
-      ),
-    );
+    // Discover Education apps before opening any route. A loading dialog
+    // followed by a second dialog caused the modal barrier to remain on screen
+    // on some devices, while the schedule form itself was never displayed.
+    if (!mounted || _isPreparingSchedule) return;
+    setState(() => _isPreparingSchedule = true);
+
     final educationApps = await _loadEducationApps();
+
     if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop();
+    setState(() => _isPreparingSchedule = false);
 
     final subjectController = TextEditingController(
       text: existing?.subject ?? '',
@@ -507,11 +493,22 @@ class _TimetablePageState extends State<TimetablePage> {
         return Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _showScheduleDialog(),
+            onPressed: _isPreparingSchedule ? null : () => _showScheduleDialog(),
             backgroundColor: blue,
             foregroundColor: Colors.white,
-            icon: const Icon(Icons.add),
-            label: const Text('ADD SCHEDULE'),
+            icon: _isPreparingSchedule
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.add),
+            label: Text(
+              _isPreparingSchedule ? 'PREPARING...' : 'ADD SCHEDULE',
+            ),
           ),
           body: SafeArea(
             child: ListView(
