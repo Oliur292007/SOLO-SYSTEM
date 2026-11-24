@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart';
 
 class StudyScheduleItem {
   final String id;
@@ -11,7 +10,6 @@ class StudyScheduleItem {
   final String startTime;
   final int durationMinutes;
   final bool isOptional;
-  final List<String> allowedEducationApps;
 
   /// Date key ("YYYY-MM-DD") when this schedule was last completed.
   /// null = not completed today.
@@ -24,7 +22,6 @@ class StudyScheduleItem {
     required this.startTime,
     required this.durationMinutes,
     this.isOptional = false,
-    this.allowedEducationApps = const [],
     this.completedDate,
   });
 
@@ -35,7 +32,6 @@ class StudyScheduleItem {
     String? startTime,
     int? durationMinutes,
     bool? isOptional,
-    List<String>? allowedEducationApps,
     Object? completedDate = _sentinel,
   }) {
     return StudyScheduleItem(
@@ -45,7 +41,6 @@ class StudyScheduleItem {
       startTime: startTime ?? this.startTime,
       durationMinutes: durationMinutes ?? this.durationMinutes,
       isOptional: isOptional ?? this.isOptional,
-      allowedEducationApps: allowedEducationApps ?? this.allowedEducationApps,
       completedDate: identical(completedDate, _sentinel)
           ? this.completedDate
           : completedDate as String?,
@@ -60,7 +55,6 @@ class StudyScheduleItem {
       'startTime': startTime,
       'durationMinutes': durationMinutes,
       'isOptional': isOptional,
-      'allowedEducationApps': allowedEducationApps,
       'completedDate': completedDate,
     };
   }
@@ -73,9 +67,6 @@ class StudyScheduleItem {
       startTime: json['startTime'] as String,
       durationMinutes: json['durationMinutes'] as int,
       isOptional: json['isOptional'] as bool? ?? false,
-      allowedEducationApps: (json['allowedEducationApps'] as List<dynamic>?)
-              ?.whereType<String>().toList() ??
-          const [],
       completedDate: json['completedDate'] as String?,
     );
   }
@@ -241,7 +232,6 @@ class TimetableSystem extends ChangeNotifier {
     await clearOldCompletions();
 
     isLoaded = true;
-    await _syncQuestTimerEducationApps();
     notifyListeners();
   }
 
@@ -255,7 +245,6 @@ class TimetableSystem extends ChangeNotifier {
     required String startTime,
     required int durationMinutes,
     bool isOptional = false,
-    List<String> allowedEducationApps = const [],
     ValueChanged<String>? onError,
   }) async {
     final cleanSubject = subject.trim();
@@ -280,7 +269,6 @@ class TimetableSystem extends ChangeNotifier {
       startTime: startTime,
       durationMinutes: durationMinutes,
       isOptional: isOptional,
-      allowedEducationApps: List.unmodifiable(allowedEducationApps.toSet()),
     );
 
     _schedules.add(item);
@@ -307,7 +295,6 @@ class TimetableSystem extends ChangeNotifier {
     required String startTime,
     required int durationMinutes,
     bool isOptional = false,
-    List<String>? allowedEducationApps,
     ValueChanged<String>? onError,
   }) async {
     final cleanSubject = subject.trim();
@@ -338,9 +325,6 @@ class TimetableSystem extends ChangeNotifier {
       startTime: startTime,
       durationMinutes: durationMinutes,
       isOptional: isOptional,
-      allowedEducationApps: List.unmodifiable(
-        (allowedEducationApps ?? previous.allowedEducationApps).toSet(),
-      ),
       completedDate: previous.completedDate, // preserve
     );
 
@@ -481,29 +465,10 @@ class TimetableSystem extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final data = _schedules.map((item) => item.toJson()).toList();
-      final saved = await prefs.setString(_storageKey, jsonEncode(data));
-      if (saved) await _syncQuestTimerEducationApps();
-      return saved;
+      return await prefs.setString(_storageKey, jsonEncode(data));
     } catch (_) {
       return false;
     }
   }
 
-  /// Keep the native Timer policy in sync with all Education apps selected
-  /// across the user's saved timetable entries.
-  Future<void> _syncQuestTimerEducationApps() async {
-    final packages = _schedules
-        .expand((item) => item.allowedEducationApps)
-        .where((packageName) => packageName.trim().isNotEmpty)
-        .toSet()
-        .toList();
-    try {
-      await const MethodChannel('solo_system/app_restriction')
-          .invokeMethod<bool>('syncQuestTimerEducationApps', {
-        'packages': packages,
-      });
-    } catch (_) {
-      // Keep timetable editing available if the native bridge is unavailable.
-    }
-  }
 }
