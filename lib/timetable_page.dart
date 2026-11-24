@@ -49,9 +49,31 @@ class _TimetablePageState extends State<TimetablePage> {
   Future<void> _showScheduleDialog({
     StudyScheduleItem? existing,
   }) async {
-    // Start discovery without waiting; show the schedule form immediately.
-    final educationAppsFuture = _loadEducationApps();
+    // Resolve the native app scan before creating the form route. Keeping the
+    // asynchronous package-discovery Future outside the schedule dialog avoids
+    // rebuilding the dialog overlay while Android is returning the app list.
     if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 16),
+            Expanded(child: Text('Preparing schedule...')),
+          ],
+        ),
+      ),
+    );
+    final educationApps = await _loadEducationApps();
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
 
     final subjectController = TextEditingController(
       text: existing?.subject ?? '',
@@ -75,6 +97,7 @@ class _TimetablePageState extends State<TimetablePage> {
 
     await showDialog(
       context: context,
+      useRootNavigator: true,
       barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(
@@ -318,30 +341,8 @@ class _TimetablePageState extends State<TimetablePage> {
                         ),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: FutureBuilder<List<Map<String, String>>>(
-                        future: educationAppsFuture,
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState != ConnectionState.done) {
-                            return const Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  ),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    'Loading installed Education apps...',
-                                    style: TextStyle(fontSize: 11),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
-
-                          final educationApps = snapshot.data ?? [];
+                      child: Builder(
+                        builder: (context) {
                           final query = educationSearch.trim().toLowerCase();
                           final filteredEducationApps = educationApps.where((app) {
                             return query.isEmpty ||
