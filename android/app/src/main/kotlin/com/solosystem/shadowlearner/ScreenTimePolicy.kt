@@ -134,11 +134,8 @@ object ScreenTimePolicy {
             .putBoolean("flutter.timer_finished", remaining == 0)
             .remove("flutter.timer_end_time")
             .apply()
-        context.getSharedPreferences(
-            StudyRestrictionAccessibilityService.PREFS, Context.MODE_PRIVATE
-        ).edit()
-            .putBoolean(StudyRestrictionAccessibilityService.KEY_ACTIVE, false)
-            .apply()
+        // Keep Study Protection active while the timer is paused. The
+        // Flutter app clears this flag when the user returns and reconciles state.
     }
     private fun mostRecentForegroundPackage(context: Context): String? {
         if (!hasUsageAccess(context)) return null
