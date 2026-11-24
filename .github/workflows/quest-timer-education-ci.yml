@@ -1,4 +1,4 @@
-name: Quest Timer Education App Validation
+name: Quest Timer Study Protection Validation
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
     paths:
       - 'lib/timetable_page.dart'
       - 'lib/timetable_system.dart'
+      - 'lib/study_timer.dart'
+      - 'lib/main.dart'
       - 'android/app/src/main/**'
       - 'pubspec.yaml'
       - 'test/**'
