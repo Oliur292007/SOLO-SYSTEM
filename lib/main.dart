@@ -607,7 +607,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
                   true;
           if (shouldPause &&
               WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
-            await widget.studyTimer.pause();
+            await widget.studyTimer.pause(keepStudyRestrictionActive: true);
           }
         } catch (error) {
           // Do not pause on a failed foreground check: screen lock/off also
