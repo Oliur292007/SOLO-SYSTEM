@@ -252,7 +252,7 @@ class StudyTimer extends ChangeNotifier {
   // PAUSE
   // ============================================================
 
-  Future<void> pause() async {
+  Future<void> pause({bool keepStudyRestrictionActive = false}) async {
     if (!isRunning) return;
 
     _updateRemaining();
@@ -268,7 +268,7 @@ class StudyTimer extends ChangeNotifier {
     }
 
     await _saveTimer();
-    await _syncNativeRestriction();
+    if (!keepStudyRestrictionActive) await _syncNativeRestriction();
     notifyListeners();
   }
 
