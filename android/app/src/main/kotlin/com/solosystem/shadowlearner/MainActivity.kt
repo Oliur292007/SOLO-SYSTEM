@@ -23,7 +23,14 @@ class MainActivity : FlutterActivity() {
                         result.success(ScreenTimePolicy.shouldPauseQuestTimer(this))
                     }
                     "getEducationApps" -> {
-                        result.success(ScreenTimePolicy.educationApps(this))
+                        // Package discovery can be expensive on devices with many apps.
+                        // Never run it on Android's main/UI thread.
+                        Thread({
+                            val apps = ScreenTimePolicy.educationApps(this)
+                            runOnUiThread {
+                                result.success(apps)
+                            }
+                        }, "education-app-discovery").start()
                     }
                     "syncQuestTimerEducationApps" -> {
                         val packages = call.argument<List<String>>("packages") ?: emptyList()
