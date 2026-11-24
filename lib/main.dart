@@ -610,10 +610,9 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             await widget.studyTimer.pause();
           }
         } catch (error) {
+          // Do not pause on a failed foreground check: screen lock/off also
+          // backgrounds Flutter and must leave the Quest Timer running.
           debugPrint('QUEST TIMER BACKGROUND CHECK ERROR: $error');
-          if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
-            await widget.studyTimer.pause();
-          }
         }
       },
     );
