@@ -79,7 +79,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                         currentSessionUsageMs = 0L
                         lastUsageTickElapsed = nowElapsed
                     }
-                    if (lastUsageTickElapsed > 0L && isScreenInteractive() && !studyActive) {
+                    if (lastUsageTickElapsed > 0L && isScreenInteractive()) {
                         currentSessionUsageMs +=
                             (nowElapsed - lastUsageTickElapsed).coerceAtLeast(0L)
                     }
