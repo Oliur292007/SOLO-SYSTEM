@@ -165,9 +165,7 @@ object ScreenTimePolicy {
     }
     fun isStudyAllowed(context: Context, packageName: String): Boolean {
         if (packageName == context.packageName) return true
-        val allowed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getStringSet(KEY_ALLOWED, emptySet()) ?: emptySet()
-        return packageName in allowed || categoryFor(context, packageName) == "youtube_special"
+        return categoryFor(context, packageName) == "youtube_special"
     }
 
     fun categoryFor(context: Context, packageName: String): String {
