@@ -106,7 +106,6 @@ class _TimetablePageState extends State<TimetablePage> {
                   startTime: formattedTime,
                   durationMinutes: duration,
                   isOptional: isOptional,
-                  allowedEducationApps: selectedEducationApps.toList(),
                 );
                 if (!success) {
                   errorMessage =
