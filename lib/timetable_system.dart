@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StudyScheduleItem {
@@ -77,6 +78,31 @@ const Object _sentinel = Object();
 class TimetableSystem extends ChangeNotifier {
   static const String _storageKey = 'study_timetable';
   static const int _maxSubjectLength = 40;
+  static const MethodChannel _restrictionChannel =
+      MethodChannel('solo_system/app_restriction');
+
+  /// Sync saved timetable sessions with Android's native weekly alarms.
+  Future<void> _syncNativeStudyProtectionSchedules() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    final schedules = _schedules
+        .map((item) => <String, dynamic>{
+              'id': item.id,
+              'dayOfWeek': item.dayOfWeek,
+              'startTime': item.startTime,
+              'durationMinutes': item.durationMinutes,
+            })
+        .toList(growable: false);
+    try {
+      await _restrictionChannel.invokeMethod<void>(
+        'syncStudyProtectionSchedules',
+        <String, dynamic>{'schedules': schedules},
+      );
+    } on PlatformException catch (error) {
+      debugPrint('STUDY PROTECTION SCHEDULE SYNC ERROR: $error');
+    } on MissingPluginException catch (error) {
+      debugPrint('STUDY PROTECTION NATIVE CHANNEL MISSING: $error');
+    }
+  }
 
   final List<StudyScheduleItem> _schedules = [];
 
@@ -231,6 +257,8 @@ class TimetableSystem extends ChangeNotifier {
     // Enforce daily reset for completion flags.
     await clearOldCompletions();
 
+    // Rebuild native alarms on launch, after process death or app updates.
+    await _syncNativeStudyProtectionSchedules();
     isLoaded = true;
     notifyListeners();
   }
@@ -280,6 +308,7 @@ class TimetableSystem extends ChangeNotifier {
       return false;
     }
 
+    await _syncNativeStudyProtectionSchedules();
     notifyListeners();
     return true;
   }
@@ -335,6 +364,7 @@ class TimetableSystem extends ChangeNotifier {
       return false;
     }
 
+    await _syncNativeStudyProtectionSchedules();
     notifyListeners();
     return true;
   }
@@ -355,6 +385,7 @@ class TimetableSystem extends ChangeNotifier {
       return false;
     }
 
+    await _syncNativeStudyProtectionSchedules();
     notifyListeners();
     return true;
   }
@@ -364,7 +395,10 @@ class TimetableSystem extends ChangeNotifier {
   // ============================================================
 
   Future<bool> clearAllSchedules() async {
-    if (_schedules.isEmpty) return true;
+    if (_schedules.isEmpty) {
+      await _syncNativeStudyProtectionSchedules();
+      return true;
+    }
 
     final backup = List<StudyScheduleItem>.from(_schedules);
     _schedules.clear();
@@ -375,6 +409,7 @@ class TimetableSystem extends ChangeNotifier {
       return false;
     }
 
+    await _syncNativeStudyProtectionSchedules();
     notifyListeners();
     return true;
   }
