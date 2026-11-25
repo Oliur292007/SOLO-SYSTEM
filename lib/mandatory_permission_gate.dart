@@ -38,12 +38,7 @@ class _MandatoryPermissionGateState extends State<MandatoryPermissionGate>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _refreshPermissions();
-    _permissionPollTimer = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) {
-        if (!_ready) _refreshPermissions();
-      },
-    );
+    _startPermissionPolling();
   }
 
   @override
@@ -56,12 +51,28 @@ class _MandatoryPermissionGateState extends State<MandatoryPermissionGate>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      if (_ready && mounted) {
+        setState(() {
+          _ready = false;
+          _checking = true;
+        });
+        _startPermissionPolling();
+      }
       _refreshPermissions();
     }
   }
 
+  void _startPermissionPolling() {
+    _permissionPollTimer ??= Timer.periodic(
+      const Duration(seconds: 2),
+      (_) {
+        if (!_ready) _refreshPermissions();
+      },
+    );
+  }
+
   Future<void> _refreshPermissions() async {
-    if (_refreshInProgress || _ready) return;
+    if (_refreshInProgress) return;
     _refreshInProgress = true;
     if (_checking == false && mounted) {
       setState(() => _checking = true);
@@ -108,7 +119,10 @@ class _MandatoryPermissionGateState extends State<MandatoryPermissionGate>
           batteryExemption;
       _checking = false;
     });
-    if (_ready) _permissionPollTimer?.cancel();
+    if (_ready) {
+      _permissionPollTimer?.cancel();
+      _permissionPollTimer = null;
+    }
   }
 
   @override
