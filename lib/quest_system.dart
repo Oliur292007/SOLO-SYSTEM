@@ -133,6 +133,7 @@ class QuestSystem extends ChangeNotifier {
   static const String _snapshotKey = 'quest_snapshot';
   static const String _penaltyKey = 'penalty_until';
   static const String _nightLockKey = 'night_lock_active';
+  static const String _hpCriticalPenaltyKey = 'hp_critical_penalty_applied';
   static const String _timerStartsKey = 'quest_timer_starts';
   static const String _specialWeekKey = 'weekly_special_week';
   static const String _specialDayKey = 'weekly_special_day';
@@ -486,6 +487,8 @@ class QuestSystem extends ChangeNotifier {
     }
 
     isNightLockActive = prefs.getBool(_nightLockKey) ?? false;
+    _hpCriticalPenaltyApplied =
+        prefs.getBool(_hpCriticalPenaltyKey) ?? false;
 
     final snapshotData = prefs.getString(_snapshotKey);
 
@@ -1164,10 +1167,12 @@ class QuestSystem extends ChangeNotifier {
         await _savePenalty();
         _syncPenaltyTicker();
       }
+      await _saveHpCriticalPenaltyApplied();
     }
-    // Reset flag if HP restored.
-    if (!player.isCriticalHp) {
+    // Persist the reset so a later critical-HP event can apply its penalty once.
+    if (!player.isCriticalHp && _hpCriticalPenaltyApplied) {
       _hpCriticalPenaltyApplied = false;
+      await _saveHpCriticalPenaltyApplied();
     }
   }
 
@@ -1267,6 +1272,7 @@ class QuestSystem extends ChangeNotifier {
       unawaited(_maybeApplyHpCriticalPenalty(player));
     } else if (_hpCriticalPenaltyApplied) {
       _hpCriticalPenaltyApplied = false;
+      unawaited(_saveHpCriticalPenaltyApplied());
     }
   }
 
@@ -1318,6 +1324,11 @@ class QuestSystem extends ChangeNotifier {
   Future<void> _saveNightLock() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_nightLockKey, isNightLockActive);
+  }
+
+  Future<void> _saveHpCriticalPenaltyApplied() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_hpCriticalPenaltyKey, _hpCriticalPenaltyApplied);
   }
 
   @override
