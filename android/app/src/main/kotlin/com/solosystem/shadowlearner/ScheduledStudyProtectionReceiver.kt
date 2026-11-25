@@ -25,6 +25,23 @@ class ScheduledStudyProtectionReceiver : BroadcastReceiver() {
         private const val TAG = "ShadowStudySchedule"
 
         fun sync(context: Context, schedules: List<Map<String, Any>>) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+            // Cancel alarms belonging to the old list before replacing it, so
+            // deleted or edited timetable entries cannot leave stale alarms.
+            val previousSchedules = try {
+                JSONArray(prefs.getString(KEY_SCHEDULES, "[]") ?: "[]")
+            } catch (_: Exception) {
+                JSONArray()
+            }
+            for (i in 0 until previousSchedules.length()) {
+                val item = previousSchedules.optJSONObject(i) ?: continue
+                val id = item.optString("id")
+                cancelBoundary(context, alarm, requestCode(id, 0))
+                cancelBoundary(context, alarm, requestCode(id, 1))
+            }
+
             val array = JSONArray()
             schedules.forEach { item ->
                 array.put(JSONObject().apply {
@@ -34,8 +51,7 @@ class ScheduledStudyProtectionReceiver : BroadcastReceiver() {
                     put("durationMinutes", (item["durationMinutes"] as Number).toInt())
                 })
             }
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putString(KEY_SCHEDULES, array.toString()).apply()
+            prefs.edit().putString(KEY_SCHEDULES, array.toString()).apply()
             refresh(context)
         }
 
