@@ -9,6 +9,7 @@ on:
       - 'lib/code_entry_dialog.dart'
       - 'lib/security_controller.dart'
       - 'lib/supabase_service.dart'
+      - 'supabase/migrations/**'
       - 'test/**'
       - 'pubspec.yaml'
       - '.github/workflows/protected-uninstall-ci.yml'
