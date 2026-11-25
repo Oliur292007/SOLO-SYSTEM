@@ -437,7 +437,7 @@ class _SecurityPageState extends State<SecurityPage> {
             colors: c,
             icon: Icons.vpn_key,
             iconColor: c.cyan,
-            title: 'Generate Unlock / Uninstall Code',
+            title: 'Request Unlock / Uninstall Code',
             subtitle: isRegistered
                 ? 'Request codes through the Telegram companion bot'
                 : 'Requires registration',
@@ -447,14 +447,12 @@ class _SecurityPageState extends State<SecurityPage> {
 
           const SizedBox(height: 8),
 
-          const SizedBox(height: 8),
-
           _ActionTile(
             colors: c,
             icon: Icons.lock_open,
             iconColor: Colors.green,
             title: 'Enter Emergency Unlock Code',
-            subtitle: 'Unblock restricted apps for 60 minutes',
+            subtitle: 'Unblock restricted apps for ${widget.supabaseService.emergencyUnlockMinutes} minutes',
             enabled: isRegistered,
             onTap: _handleEmergencyUnlock,
           ),
@@ -489,7 +487,7 @@ class _SecurityPageState extends State<SecurityPage> {
                 _InfoStep(
                   colors: c,
                   number: '1',
-                  text: 'Tap "Generate Unlock / Uninstall Code".',
+                  text: 'Tap "Request Unlock / Uninstall Code".',
                 ),
                 _InfoStep(
                   colors: c,
