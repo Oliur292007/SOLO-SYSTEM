@@ -89,17 +89,22 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     // Re-check the already-open foreground app on every watchdog
                     // pass. A schedule can become active while an app is already
                     // foregrounded, without generating a new window-state event.
-                    val shouldBlockForPenalty = penaltyLockActive &&
-                        packageName != null &&
-                        !isSystemAllowedPackage(packageName) &&
-                        !ScreenTimePolicy.isPenaltyAllowed(
+                    val penaltyAllowed = packageName != null &&
+                        ScreenTimePolicy.isPenaltyAllowed(
                             this@StudyRestrictionAccessibilityService,
                             packageName
                         )
+                    val penaltyExempt = penaltyLockActive && penaltyAllowed
+
+                    val shouldBlockForPenalty = penaltyLockActive &&
+                        packageName != null &&
+                        !isSystemAllowedPackage(packageName) &&
+                        !penaltyAllowed
 
                     val shouldBlockForStudy = studyActive &&
                         packageName != null &&
                         !isSystemAllowedPackage(packageName) &&
+                        !penaltyExempt &&
                         !ScreenTimePolicy.isStudyAllowed(
                             this@StudyRestrictionAccessibilityService,
                             packageName
@@ -108,6 +113,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     var shouldBlock = false
                     if (packageName != null &&
                         !isSystemAllowedPackage(packageName) &&
+                        !penaltyExempt &&
                         ScreenTimePolicy.hasUsageAccess(this@StudyRestrictionAccessibilityService)
                     ) {
                         val usage = ScreenTimePolicy.usageByPackage(
