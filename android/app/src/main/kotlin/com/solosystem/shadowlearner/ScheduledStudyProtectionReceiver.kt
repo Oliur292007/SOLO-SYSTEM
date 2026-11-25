@@ -22,6 +22,9 @@ class ScheduledStudyProtectionReceiver : BroadcastReceiver() {
         const val KEY_SCHEDULE_ACTIVE = "study_protection_schedule_active"
         private const val ACTION_BOUNDARY = "com.solosystem.shadowlearner.STUDY_BOUNDARY"
         private const val ACTION_BOOT = "android.intent.action.BOOT_COMPLETED"
+        private const val ACTION_PACKAGE_REPLACED = "android.intent.action.MY_PACKAGE_REPLACED"
+        private const val ACTION_TIME_CHANGED = "android.intent.action.TIME_SET"
+        private const val ACTION_TIMEZONE_CHANGED = "android.intent.action.TIMEZONE_CHANGED"
         private const val TAG = "ShadowStudySchedule"
 
         fun sync(context: Context, schedules: List<Map<String, Any>>) {
@@ -203,7 +206,11 @@ class ScheduledStudyProtectionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
         when (intent?.action) {
-            ACTION_BOUNDARY, ACTION_BOOT -> refresh(context)
+            ACTION_BOUNDARY,
+            ACTION_BOOT,
+            ACTION_PACKAGE_REPLACED,
+            ACTION_TIME_CHANGED,
+            ACTION_TIMEZONE_CHANGED -> refresh(context)
         }
     }
 }
