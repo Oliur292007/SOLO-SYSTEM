@@ -29,6 +29,8 @@ class _TimetablePageState extends State<TimetablePage> {
   Future<void> _showScheduleDialog({
     StudyScheduleItem? existing,
   }) async {
+    if (!mounted) return;
+
     final subjectController = TextEditingController(
       text: existing?.subject ?? '',
     );
@@ -47,6 +49,7 @@ class _TimetablePageState extends State<TimetablePage> {
 
     await showDialog(
       context: context,
+      useRootNavigator: true,
       barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(

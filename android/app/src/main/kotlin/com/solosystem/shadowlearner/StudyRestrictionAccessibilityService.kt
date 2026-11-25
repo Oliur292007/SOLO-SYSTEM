@@ -1,8 +1,15 @@
 package com.solosystem.shadowlearner
 
 import android.accessibilityservice.AccessibilityService
+import android.Manifest
+import android.app.KeyguardManager
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -25,9 +32,14 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     companion object {
         const val PREFS = "solo_system_study_restriction"
         const val KEY_ACTIVE = "study_restriction_active"
+        private const val YOUTUBE_WARNING_CHANNEL = "youtube_time_reminders"
 
         @Volatile
         var isConnected: Boolean = false
+            private set
+
+        @Volatile
+        var lastKnownForegroundPackageForTimer: String? = null
             private set
     }
 
@@ -42,6 +54,8 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     private var lastRedirectAt = 0L
     private var lastBlockedPackage: String? = null
     private var currentUsageDay = usageDayKey()
+    @Volatile private var youtubeWarningStartedAtElapsed = 0L
+    private var youtubeWarningNotificationId = 54_000
 
     private val screenTimeCheck = object : Runnable {
         override fun run() {
@@ -57,6 +71,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     try {
                     val nowElapsed = SystemClock.elapsedRealtime()
                     val studyActive = isStudyProtectionActive()
+                    updateYouTubeWarning(packageName, nowElapsed, studyActive)
                     val today = usageDayKey()
 
                     if (today != currentUsageDay) {
@@ -64,7 +79,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                         currentSessionUsageMs = 0L
                         lastUsageTickElapsed = nowElapsed
                     }
-                    if (lastUsageTickElapsed > 0L && isScreenInteractive() && !studyActive) {
+                    if (lastUsageTickElapsed > 0L && isScreenInteractive()) {
                         currentSessionUsageMs +=
                             (nowElapsed - lastUsageTickElapsed).coerceAtLeast(0L)
                     }
@@ -72,7 +87,6 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
 
                     var shouldBlock = false
                     if (packageName != null &&
-                        !studyActive &&
                         !isSystemAllowedPackage(packageName) &&
                         ScreenTimePolicy.hasUsageAccess(this@StudyRestrictionAccessibilityService)
                     ) {
@@ -92,8 +106,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     if (shouldBlock && packageName != null) {
                         handler.post {
                             if (isConnected &&
-                                currentForegroundPackage == packageName &&
-                                !isStudyProtectionActive()
+                                currentForegroundPackage == packageName
                             ) {
                                 redirectHome(packageName)
                             }
@@ -113,6 +126,70 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 Log.w("ShadowLearnerAccess", "Usage worker is restarting", error)
                 scheduleMonitoring(1_000L)
             }
+        }
+    }
+
+    private fun updateYouTubeWarning(
+        packageName: String?,
+        nowElapsed: Long,
+        studyActive: Boolean
+    ) {
+        val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        val isYouTubeForeground = packageName != null &&
+            ScreenTimePolicy.categoryFor(this, packageName) == "youtube_special"
+        if (!studyActive || !isYouTubeForeground || !isScreenInteractive() ||
+            keyguard.isKeyguardLocked) {
+            youtubeWarningStartedAtElapsed = 0L
+            return
+        }
+
+        if (youtubeWarningStartedAtElapsed == 0L) {
+            youtubeWarningStartedAtElapsed = nowElapsed
+            return
+        }
+
+        // The interval comes from Supabase config (default: five minutes).
+        val intervalMinutes = ScreenTimePolicy.youtubeWarningMinutes(this)
+        val intervalMs = intervalMinutes * 60_000L
+        if (nowElapsed - youtubeWarningStartedAtElapsed >= intervalMs) {
+            postYouTubeWarning(intervalMinutes)
+            youtubeWarningStartedAtElapsed = nowElapsed
+        }
+    }
+
+    private fun postYouTubeWarning(intervalMinutes: Int) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED) return
+
+        try {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= 26) {
+                val channel = NotificationChannel(
+                    YOUTUBE_WARNING_CHANNEL,
+                    "YouTube time reminders",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Periodic reminders while YouTube is open during Study Protection."
+                }
+                manager.createNotificationChannel(channel)
+            }
+
+            val builder = if (Build.VERSION.SDK_INT >= 26) {
+                Notification.Builder(this, YOUTUBE_WARNING_CHANNEL)
+            } else {
+                Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
+            }
+            val notification = builder
+                .setSmallIcon(applicationInfo.icon)
+                .setContentTitle("YOUTUBE TIME CHECK")
+                .setContentText("$intervalMinutes minutes have passed on YouTube. Stay focused on your learning goal.")
+                .setCategory(Notification.CATEGORY_REMINDER)
+                .setAutoCancel(true)
+                .build()
+            manager.notify(youtubeWarningNotificationId++, notification)
+        } catch (error: Exception) {
+            Log.w("ShadowLearnerAccess", "Could not post YouTube reminder", error)
         }
     }
 
@@ -138,6 +215,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         currentForegroundPackage = runCatching {
             rootInActiveWindow?.packageName?.toString()?.takeIf { it.isNotBlank() }
         }.getOrNull()
+        lastKnownForegroundPackageForTimer = currentForegroundPackage
         lastUsageTickElapsed = SystemClock.elapsedRealtime()
         isConnected = true
         Log.i("ShadowLearnerAccess", "Accessibility service connected")
@@ -165,6 +243,13 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 ?: event.packageName?.toString()?.takeIf { it.isNotBlank() }
                 ?: return
 
+            lastKnownForegroundPackageForTimer = openedPackage
+            if (ScreenTimePolicy.categoryFor(this, openedPackage) != "youtube_special") {
+                youtubeWarningStartedAtElapsed = 0L
+            }
+            if (ScreenTimePolicy.shouldPauseQuestTimerForPackage(this, openedPackage)) {
+                ScreenTimePolicy.pauseRunningQuestTimer(this)
+            }
             if (currentForegroundPackage != openedPackage) {
                 currentForegroundPackage = openedPackage
                 // Do not query the complete UsageStats event history on Android's
@@ -178,6 +263,14 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             // Study Protection is time-critical and uses only a SharedPreferences
             // read here; it never waits for the UsageStats worker.
             if (isStudyProtectionActive()) {
+                // Education / YouTube-special and explicitly allowed packages
+                // remain available during Study Protection.
+                if (ScreenTimePolicy.isStudyAllowed(this, openedPackage)) {
+                    // YouTube is allowed during Study Protection, but daily
+                    // Screen Time monitoring must continue in the background.
+                    scheduleMonitoring()
+                    return
+                }
                 redirectHome(openedPackage)
                 return
             }
@@ -246,6 +339,8 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean {
         Log.w("ShadowLearnerAccess", "Accessibility service unbound by Android")
         isConnected = false
+        // A reconnect must rediscover the foreground app instead of reusing stale state.
+        lastKnownForegroundPackageForTimer = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
         return super.onUnbind(intent)
@@ -254,6 +349,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         Log.w("ShadowLearnerAccess", "Accessibility service destroyed")
         isConnected = false
+        lastKnownForegroundPackageForTimer = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
         super.onDestroy()
