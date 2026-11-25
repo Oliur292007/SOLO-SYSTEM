@@ -185,6 +185,12 @@ object ScreenTimePolicy {
         )
         if (packageName in knownEssentialPackages) return true
 
+        // Education/learning apps remain available during Penalty and Night Lock.
+        // Include Udvash-Unmesh explicitly, then use the shared app classifier
+        // so other educational apps are recognized by package, category, or label.
+        if (packageName == "com.udvashunmesh.online") return true
+        if (categoryFor(context, packageName) == "education") return true
+
         // App-lock package names vary across OEMs. Use narrow matching rather
         // than allowing every app whose name merely contains the word "lock".
         val normalizedPackage = packageName.lowercase()
