@@ -3201,7 +3201,7 @@ class QuestPage extends StatelessWidget {
 // STATUS PAGE
 // ============================================================
 
-class StatusPage extends StatelessWidget {
+class StatusPage extends StatefulWidget {
   final PlayerSystem player;
   final UidManager uidManager;
   final SupabaseService supabaseService;
@@ -3214,6 +3214,57 @@ class StatusPage extends StatelessWidget {
     required this.supabaseService,
     required this.securityController,
   });
+
+  @override
+  State<StatusPage> createState() => _StatusPageState();
+}
+
+class _StatusPageState extends State<StatusPage>
+    with WidgetsBindingObserver {
+  static const MethodChannel _restrictionChannel =
+      MethodChannel('solo_system/app_restriction');
+
+  Timer? _statusRefreshTimer;
+  bool? _studyProtectionActive;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshStudyProtectionStatus();
+    _statusRefreshTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _refreshStudyProtectionStatus(),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshStudyProtectionStatus();
+    }
+  }
+
+  Future<void> _refreshStudyProtectionStatus() async {
+    try {
+      final active = await _restrictionChannel.invokeMethod<bool>(
+        'isStudyProtectionActive',
+      );
+      if (!mounted || active == null || active == _studyProtectionActive) {
+        return;
+      }
+      setState(() => _studyProtectionActive = active);
+    } catch (error) {
+      debugPrint('STUDY PROTECTION STATUS ERROR: $error');
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _statusRefreshTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3235,7 +3286,7 @@ class StatusPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                player.playerName.toUpperCase(),
+                widget.player.playerName.toUpperCase(),
                 style: TextStyle(
                   color: c.text,
                   fontSize: 18,
@@ -3244,32 +3295,41 @@ class StatusPage extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                '${player.rank} • ${player.title}',
+                '${widget.player.rank} • ${widget.player.title}',
                 style: TextStyle(color: c.cyan, fontSize: 11),
               ),
               const SizedBox(height: 16),
-              _statusRow(context, 'LEVEL', '${player.level}'),
-              _statusRow(context, 'XP', '${player.xp} / ${player.xpRequired}'),
+              _statusRow(context, 'LEVEL', '${widget.player.level}'),
+              _statusRow(context, 'XP', '${widget.player.xp} / ${widget.player.xpRequired}'),
               _statusRow(
                 context,
                 'XP PROGRESS',
-                '${(player.xpProgress * 100).toStringAsFixed(0)}%',
+                '${(widget.player.xpProgress * 100).toStringAsFixed(0)}%',
               ),
-              _statusRow(context, 'HP', '${player.hp} / ${player.maxHp}'),
-              _statusRow(context, 'MP', '${player.mp} / ${player.maxMp}'),
+              _statusRow(context, 'HP', '${widget.player.hp} / ${widget.player.maxHp}'),
+              _statusRow(context, 'MP', '${widget.player.mp} / ${widget.player.maxMp}'),
               _statusRow(
                 context,
                 'TOTAL STUDY TIME',
-                player.totalStudyTimeFormatted,
+                widget.widget.player.totalStudyTimeFormatted,
+              ),
+              _statusRow(
+                context,
+                'STUDY PROTECTION',
+                _studyProtectionActive == null
+                    ? 'CHECKING...'
+                    : _studyProtectionActive!
+                        ? 'ACTIVE'
+                        : 'INACTIVE',
               ),
             ],
           ),
         ),
         const SizedBox(height: 18),
         _UidSecurityCard(
-          securityController: securityController,
-          supabaseService: supabaseService,
-          uidManager: uidManager,
+          widget.securityController: widget.securityController,
+          widget.supabaseService: widget.supabaseService,
+          widget.uidManager: widget.uidManager,
         ),
         const SizedBox(height: 22),
         const SectionTitle(title: 'ATTRIBUTES'),
@@ -3279,7 +3339,7 @@ class StatusPage extends StatelessWidget {
             Expanded(
               child: InfoCard(
                 title: 'STRENGTH',
-                value: '${player.strength}',
+                value: '${widget.player.strength}',
                 unit: 'STR',
                 icon: Icons.fitness_center,
               ),
@@ -3288,14 +3348,14 @@ class StatusPage extends StatelessWidget {
             Expanded(
               child: InfoCard(
                 title: 'INTELLECT',
-                value: '${player.intellect}',
+                value: '${widget.player.intellect}',
                 unit: 'INT',
                 icon: Icons.psychology,
               ),
             ),
           ],
         ),
-        if (player.hpDamageHistory.isNotEmpty) ...[
+        if (widget.player.hpDamageHistory.isNotEmpty) ...[
           const SizedBox(height: 22),
           const SectionTitle(title: 'RECENT HP DAMAGE'),
           const SizedBox(height: 12),
@@ -3311,7 +3371,7 @@ class StatusPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ...player.hpDamageHistory.reversed.take(5).map(
+                ...widget.player.hpDamageHistory.reversed.take(5).map(
                       (event) => Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Row(
