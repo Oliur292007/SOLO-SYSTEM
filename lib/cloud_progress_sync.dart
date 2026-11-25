@@ -58,6 +58,7 @@ class CloudProgressSync {
     'quest_snapshot',
     'penalty_until',
     'night_lock_active',
+    'hp_critical_penalty_applied',
     'quest_timer_starts',
 
     // Study timer
