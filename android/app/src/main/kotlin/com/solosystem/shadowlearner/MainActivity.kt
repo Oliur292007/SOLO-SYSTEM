@@ -38,6 +38,20 @@ class MainActivity : FlutterActivity() {
                         ScheduledStudyProtectionReceiver.sync(this, schedules)
                         result.success(true)
                     }
+                    "isStudyProtectionActive" -> {
+                        val prefs = getSharedPreferences(
+                            StudyRestrictionAccessibilityService.PREFS,
+                            MODE_PRIVATE
+                        )
+                        val active = prefs.getBoolean(
+                            StudyRestrictionAccessibilityService.KEY_ACTIVE,
+                            false
+                        ) || prefs.getBoolean(
+                            ScheduledStudyProtectionReceiver.KEY_SCHEDULE_ACTIVE,
+                            false
+                        )
+                        result.success(active)
+                    }
                     "getDailyUsage" -> result.success(ScreenTimePolicy.dailySummary(this))
                     "hasUsageAccess" -> result.success(ScreenTimePolicy.hasUsageAccess(this))
                     "openUsageAccessSettings" -> {
