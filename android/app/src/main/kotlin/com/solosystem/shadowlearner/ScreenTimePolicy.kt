@@ -160,6 +160,13 @@ object ScreenTimePolicy {
             latestPackage
         }.getOrNull()
     }
+    /** Explicitly whitelisted apps remain available during penalty and Night Lock. */
+    fun isPenaltyAllowed(context: Context, packageName: String): Boolean {
+        val allowed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet(KEY_ALLOWED, emptySet()) ?: emptySet()
+        return packageName in allowed
+    }
+
     fun isStudyAllowed(context: Context, packageName: String): Boolean {
         if (packageName == context.packageName) return true
         return categoryFor(context, packageName) == "youtube_special"
