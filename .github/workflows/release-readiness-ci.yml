@@ -1,0 +1,33 @@
+name: Release Readiness Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'pubspec.yaml'
+      - 'android/**'
+      - '.github/workflows/build-apk.yml'
+      - '.github/workflows/setup-android.yml'
+      - '.github/workflows/release-readiness-ci.yml'
+      - 'docs/RELEASE_READINESS.md'
+
+jobs:
+  release-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Android identity and release gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.solosystem.shadowlearner"' android/app/build.gradle.kts
+          grep -q 'namespace = "com.solosystem.shadowlearner"' android/app/build.gradle.kts
+          grep -q 'confirm_release:' .github/workflows/build-apk.yml
+          grep -q 'if:.*inputs.confirm_release == true' .github/workflows/build-apk.yml
+          ! grep -Eq '^  push:' .github/workflows/build-apk.yml
+          test -f docs/RELEASE_READINESS.md
+          test -d assets/branding
+          echo "Release identity and manual authorization gate verified."

@@ -12,9 +12,10 @@ jobs:
 
       - name: Verify Native Android Configuration
         run: |
-          test -f android/app/src/main/kotlin/com/example/solo_system/MainActivity.kt
-          test -f android/app/src/main/kotlin/com/example/solo_system/StudyRestrictionAccessibilityService.kt
-          grep -q 'namespace = "com.oliur.solosystem.solo_system"' android/app/build.gradle.kts
-          grep -q 'applicationId = "com.oliur.solosystem.solo_system"' android/app/build.gradle.kts
+          test -f android/app/src/main/kotlin/com/solosystem/shadowlearner/MainActivity.kt
+          test -f android/app/src/main/kotlin/com/solosystem/shadowlearner/StudyRestrictionAccessibilityService.kt
+          grep -q 'package com.solosystem.shadowlearner' android/app/src/main/kotlin/com/solosystem/shadowlearner/MainActivity.kt
+          grep -q 'namespace = "com.solosystem.shadowlearner"' android/app/build.gradle.kts
+          grep -q 'applicationId = "com.solosystem.shadowlearner"' android/app/build.gradle.kts
           grep -q 'SCHEDULE_EXACT_ALARM' android/app/src/main/AndroidManifest.xml
           grep -q 'ScheduledNotificationBootReceiver' android/app/src/main/AndroidManifest.xml
