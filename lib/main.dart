@@ -1827,6 +1827,76 @@ class DashboardPage extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        Divider(color: c.divider.withValues(alpha: 0.65), height: 1),
+        const SizedBox(height: 10),
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () async {
+            final uri = Uri.parse(
+              'https://oliur-rahman-portfolio-oliur292007s-projects.vercel.app',
+            );
+            final opened = await launchUrl(
+              uri,
+              mode: LaunchMode.externalApplication,
+            );
+            if (!opened && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Could not open developer website.')),
+              );
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 2),
+            child: Row(
+              children: [
+                ClipOval(
+                  child: Image.network(
+                    'https://drive.google.com/thumbnail?id=11M2sQbHRVV1_aowyTfjQmrBlIwVABr7Y&sz=w200',
+                    width: 36,
+                    height: 36,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 36,
+                      height: 36,
+                      color: c.panel,
+                      alignment: Alignment.center,
+                      child: Icon(Icons.person, color: c.muted, size: 20),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'MD OLIUR RAHMAN',
+                        style: TextStyle(
+                          color: c.text,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.7,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'DEVELOPER · OFFICIAL WEBSITE',
+                        style: TextStyle(
+                          color: c.muted,
+                          fontSize: 8,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.open_in_new, color: c.muted, size: 14),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
