@@ -1834,7 +1834,7 @@ class DashboardPage extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           onTap: () async {
             final uri = Uri.parse(
-              'https://oliur-rahman-portfolio-oliur292007s-projects.vercel.app',
+              'https://oliur-portfolio-github.vercel.app',
             );
             final opened = await launchUrl(
               uri,
