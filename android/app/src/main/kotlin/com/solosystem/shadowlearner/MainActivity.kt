@@ -19,6 +19,9 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "shouldPauseQuestTimer" -> {
+                        result.success(ScreenTimePolicy.shouldPauseQuestTimer(this))
+                    }
                     "setStudyRestriction" -> {
                         val active = call.argument<Boolean>("active") ?: false
                         getSharedPreferences(
@@ -28,6 +31,11 @@ class MainActivity : FlutterActivity() {
                             StudyRestrictionAccessibilityService.KEY_ACTIVE,
                             active
                         ).apply()
+                        result.success(true)
+                    }
+                    "syncStudyProtectionSchedules" -> {
+                        val schedules = call.argument<List<Map<String, Any>>>("schedules") ?: emptyList()
+                        ScheduledStudyProtectionReceiver.sync(this, schedules)
                         result.success(true)
                     }
                     "getDailyUsage" -> result.success(ScreenTimePolicy.dailySummary(this))

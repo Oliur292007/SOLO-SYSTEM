@@ -4,6 +4,8 @@ import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.app.KeyguardManager
+import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
 import org.json.JSONObject
@@ -69,12 +71,98 @@ object ScreenTimePolicy {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getInt(KEY_YOUTUBE_WARNING, 5).coerceAtLeast(1)
 
+    /**
+     * Decide whether leaving Shadow Learner should pause the Quest Timer.
+     * YouTube is the only app exception. Screen-off and keyguard states are
+     * not treated as leaving for another app.
+     */
+    fun shouldPauseQuestTimer(context: Context): Boolean {
+        if (!isScreenInteractiveAndUnlocked(context)) return false
+        val foregroundPackage = mostRecentForegroundPackage(context)
+            ?: StudyRestrictionAccessibilityService.lastKnownForegroundPackageForTimer
+            ?: return true
+        return shouldPauseQuestTimerForPackage(
+            context, foregroundPackage, ignoreSystemUiOverlay = false
+        )
+    }
+
+    fun shouldPauseQuestTimerForPackage(
+        context: Context,
+        packageName: String,
+        ignoreSystemUiOverlay: Boolean = true
+    ): Boolean {
+        if (!isScreenInteractiveAndUnlocked(context)) return false
+        if (packageName == context.packageName) return false
+
+        // System UI overlays (notification shade / quick settings) are not an
+        // intentional app switch. The home launcher is deliberately not exempt.
+        val normalized = packageName.lowercase()
+        if (normalized == "android" || normalized.contains("permissioncontroller") ||
+            (ignoreSystemUiOverlay && normalized.contains("systemui"))) return false
+
+        // YouTube is the only built-in exception to pausing the Quest Timer.
+        return categoryFor(context, packageName) != "youtube_special"
+    }
+
+    private fun isScreenInteractiveAndUnlocked(context: Context): Boolean {
+        val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!power.isInteractive) return false
+        val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        return !keyguard.isKeyguardLocked
+    }
+    /**
+     * Persist a pause directly to Flutter's preferences as a process-death
+     * fallback. The Flutter lifecycle callback also pauses the in-memory timer.
+     */
+    fun pauseRunningQuestTimer(context: Context) {
+        val prefs = context.getSharedPreferences(
+            "FlutterSharedPreferences", Context.MODE_PRIVATE
+        )
+        if (!prefs.getBoolean("flutter.timer_running", false)) return
+        if (prefs.getString("flutter.timer_quest_id", null).isNullOrBlank()) return
+
+        val endTime = prefs.getLong("flutter.timer_end_time", 0L)
+        val remaining = if (endTime > 0L) {
+            kotlin.math.ceil((endTime - System.currentTimeMillis()) / 1000.0)
+                .toInt().coerceAtLeast(0)
+        } else {
+            prefs.getInt("flutter.timer_remaining", 0).coerceAtLeast(0)
+        }
+        prefs.edit()
+            .putInt("flutter.timer_remaining", remaining)
+            .putBoolean("flutter.timer_running", false)
+            .putBoolean("flutter.timer_finished", remaining == 0)
+            .remove("flutter.timer_end_time")
+            .apply()
+        // Keep Study Protection active while the timer is paused. The
+        // Flutter app clears this flag when the user returns and reconciles state.
+    }
+    private fun mostRecentForegroundPackage(context: Context): String? {
+        if (!hasUsageAccess(context)) return null
+        val manager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val now = System.currentTimeMillis()
+        return runCatching {
+            val events = manager.queryEvents(now - 15_000L, now)
+            val event = android.app.usage.UsageEvents.Event()
+            var latestPackage: String? = null
+            var latestTimestamp = 0L
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                val isForeground = event.eventType ==
+                    android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED ||
+                    event.eventType ==
+                    android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND
+                if (isForeground && event.timeStamp >= latestTimestamp) {
+                    latestTimestamp = event.timeStamp
+                    latestPackage = event.packageName
+                }
+            }
+            latestPackage
+        }.getOrNull()
+    }
     fun isStudyAllowed(context: Context, packageName: String): Boolean {
         if (packageName == context.packageName) return true
-        val allowed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getStringSet(KEY_ALLOWED, emptySet()) ?: emptySet()
-        return packageName in allowed || categoryFor(context, packageName) == "education" ||
-            categoryFor(context, packageName) == "youtube_special"
+        return categoryFor(context, packageName) == "youtube_special"
     }
 
     fun categoryFor(context: Context, packageName: String): String {
@@ -122,9 +210,14 @@ object ScreenTimePolicy {
 
     private fun isEducationName(value: String): Boolean {
         val terms = listOf(
-            "udvash", "unmesh", "shikho", "10minuteschool", "khanacademy",
-            "coursera", "edx", "classroom", "education", "learning",
-            "study", "school", "byjus", "quizlet", "duolingo"
+            "udvash", "unmesh", "shikho", "10minuteschool", "10 minute school",
+            "bohubrihi", "khanacademy", "khan academy", "coursera", "edx",
+            "classroom", "education", "learning", "study", "school",
+            "byjus", "toppr", "vedantu", "udemy", "skillshare", "brilliant",
+            "quizlet", "quizizz", "duolingo", "photomath", "symbolab",
+            "geogebra", "wolfram", "socratic", "brainly", "moodle",
+            "blackboard", "schoology", "edmodo", "sololearn", "codecademy",
+            "w3schools", "grasshopper", "mimo", "programming hero", "exam prep"
         )
         return terms.any { value.contains(it) }
     }

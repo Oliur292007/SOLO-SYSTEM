@@ -332,6 +332,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   String _trackedRank = '';
   String _trackedTitle = '';
   Timer? _notificationPollTimer;
+  Timer? _questTimerPauseCheckTimer;
 
   @override
   void initState() {
@@ -589,19 +590,56 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     widget.player.attachUid(widget.uidManager.uid, widget.uidManager.isRegistered);
   }
 
+  void _scheduleQuestTimerBackgroundCheck() {
+    _questTimerPauseCheckTimer?.cancel();
+    // Wait for Android to publish the destination app's foreground event.
+    _questTimerPauseCheckTimer = Timer(
+      const Duration(milliseconds: 900),
+      () async {
+        if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+          return;
+        }
+        try {
+          final shouldPause =
+              await _appRestrictionChannel.invokeMethod<bool>(
+                    'shouldPauseQuestTimer',
+                  ) ??
+                  true;
+          if (shouldPause &&
+              WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+            await widget.studyTimer.pause(keepStudyRestrictionActive: true);
+          }
+        } catch (error) {
+          // Do not pause on a failed foreground check: screen lock/off also
+          // backgrounds Flutter and must leave the Quest Timer running.
+          debugPrint('QUEST TIMER BACKGROUND CHECK ERROR: $error');
+        }
+      },
+    );
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _questTimerPauseCheckTimer?.cancel();
+      // Reconcile in-memory timer state with native pause decisions made while backgrounded.
+      unawaited(widget.studyTimer.loadTimer(player: widget.player));
       unawaited(widget.securityController.refreshEmergencyUnlock());
       unawaited(_checkForAppUpdate());
       if (widget.cloudProgressSync.isPaired) _syncCloudAndRefresh();
       unawaited(_syncMissionNotificationsSafely());
-    } else if (state == AppLifecycleState.paused &&
-        widget.cloudProgressSync.isPaired) {
-      unawaited(widget.cloudProgressSync.syncNow());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      // Pause only after Android confirms a non-study app is foreground.
+      // Screen lock/off and Education / YouTube destinations continue.
+      _scheduleQuestTimerBackgroundCheck();
+      if (state == AppLifecycleState.paused &&
+          widget.cloudProgressSync.isPaired) {
+        unawaited(widget.cloudProgressSync.syncNow());
+      }
     }
+    // Ignore inactive: transient system UI changes must not pause the timer.
   }
-
   Future<void> _syncCloudAndRefresh() async {
     final result = await widget.cloudProgressSync.syncNow();
     if (result.status == CloudSyncStatus.restored && mounted) {
@@ -673,8 +711,19 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   }
 
   Future<void> _syncMissionNotifications() async {
-    await widget.notificationService.syncMissionReminders(
-      widget.timetableSystem.allSchedules,
+    final schedules = widget.timetableSystem.allSchedules;
+    await widget.notificationService.syncMissionReminders(schedules);
+    // Native exact alarms enforce Study Protection even while Flutter is closed.
+    await _appRestrictionChannel.invokeMethod<bool>(
+      'syncStudyProtectionSchedules',
+      <String, dynamic>{
+        'schedules': schedules.map((item) => <String, dynamic>{
+          'id': item.id,
+          'dayOfWeek': item.dayOfWeek,
+          'startTime': item.startTime,
+          'durationMinutes': item.durationMinutes,
+        }).toList(),
+      },
     );
   }
 

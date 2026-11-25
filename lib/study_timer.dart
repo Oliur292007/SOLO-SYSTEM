@@ -105,7 +105,12 @@ class StudyTimer extends ChangeNotifier {
   // ============================================================
 
   Future<void> loadTimer({PlayerSystem? player}) async {
+    _ticker?.cancel();
+    _ticker = null;
     final prefs = await SharedPreferences.getInstance();
+    // Native AccessibilityService may have paused the timer while Flutter was backgrounded.
+    // Refresh the plugin cache so Dart reads the native SharedPreferences write.
+    await prefs.reload();
 
     activeQuestId = prefs.getString(_questIdKey);
     remainingSeconds = prefs.getInt(_remainingKey) ?? 0;
@@ -158,24 +163,33 @@ class StudyTimer extends ChangeNotifier {
       await prefs.remove(_startedAtKey);
     }
 
-    if (isRunning && endTime != null) {
-      _updateRemaining();
-      if (remainingSeconds <= 0) {
-        remainingSeconds = 0;
+    // Restore a running countdown from its wall-clock end time. Background
+    // lifecycle handling pauses it only when Android confirms a disallowed
+    // foreground app; Education / YouTube and screen-off sessions keep running.
+    var restoreTicker = false;
+    if (isRunning) {
+      if (activeQuestId == null || endTime == null) {
         isRunning = false;
-        isFinished = true;
         endTime = null;
-        await _saveTimer();
       } else {
-        _startTicker();
+        final secondsLeft =
+            ((endTime! - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
+        if (secondsLeft <= 0) {
+          remainingSeconds = 0;
+          isRunning = false;
+          isFinished = true;
+          endTime = null;
+        } else {
+          remainingSeconds = secondsLeft;
+          restoreTicker = true;
+        }
       }
-    } else if (isRunning && endTime == null) {
-      isRunning = false;
       await _saveTimer();
     }
 
     isLoaded = true;
     await _syncNativeRestriction();
+    if (restoreTicker) _startTicker();
     notifyListeners();
   }
 
@@ -238,7 +252,7 @@ class StudyTimer extends ChangeNotifier {
   // PAUSE
   // ============================================================
 
-  Future<void> pause() async {
+  Future<void> pause({bool keepStudyRestrictionActive = false}) async {
     if (!isRunning) return;
 
     _updateRemaining();
@@ -254,7 +268,7 @@ class StudyTimer extends ChangeNotifier {
     }
 
     await _saveTimer();
-    await _syncNativeRestriction();
+    if (!keepStudyRestrictionActive) await _syncNativeRestriction();
     notifyListeners();
   }
 
