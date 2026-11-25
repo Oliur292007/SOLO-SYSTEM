@@ -209,6 +209,14 @@ object ScreenTimePolicy {
 
     fun isStudyAllowed(context: Context, packageName: String): Boolean {
         if (packageName == context.packageName) return true
+
+        // Explicitly allowed apps are available during Study Protection too.
+        // YouTube remains the only built-in app exception; other categories
+        // are not implicitly exempt unless the user explicitly allows them.
+        val allowed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet(KEY_ALLOWED, emptySet()) ?: emptySet()
+        if (packageName in allowed) return true
+
         return categoryFor(context, packageName) == "youtube_special"
     }
 
