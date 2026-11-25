@@ -74,10 +74,6 @@ class _MandatoryPermissionGateState extends State<MandatoryPermissionGate>
   Future<void> _refreshPermissions() async {
     if (_refreshInProgress) return;
     _refreshInProgress = true;
-    if (_checking == false && mounted) {
-      setState(() => _checking = true);
-    }
-
     var notifications = false;
     var exactAlarms = false;
     var accessibilityEnabled = false;
@@ -110,15 +106,18 @@ class _MandatoryPermissionGateState extends State<MandatoryPermissionGate>
 
     _refreshInProgress = false;
     if (!mounted) return;
-    setState(() {
-      _ready = notifications &&
-          exactAlarms &&
-          accessibilityEnabled &&
-          accessibilityConnected &&
-          usageAccess &&
-          batteryExemption;
-      _checking = false;
-    });
+    final allGranted = notifications &&
+        exactAlarms &&
+        accessibilityEnabled &&
+        accessibilityConnected &&
+        usageAccess &&
+        batteryExemption;
+    if (_ready != allGranted || _checking) {
+      setState(() {
+        _ready = allGranted;
+        _checking = false;
+      });
+    }
     if (_ready) {
       _permissionPollTimer?.cancel();
       _permissionPollTimer = null;
