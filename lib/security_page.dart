@@ -164,13 +164,44 @@ class _SecurityPageState extends State<SecurityPage> {
       controller: widget.controller,
       codeType: 'uninstall',
     );
-    if (success == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Uninstall authorized. You may uninstall the app now.'),
-          backgroundColor: Colors.orange,
+    if (success != true || !mounted) return;
+
+    final openAppInfo = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.verified_user, color: Colors.orange),
+            SizedBox(width: 8),
+            Expanded(child: Text('UNINSTALL AUTHORIZED')),
+          ],
         ),
-      );
+        content: const Text(
+          'Your one-time Developer Authorization Code was accepted. '
+          'You can now continue to Android App Info.\n\n'
+          'Important: Option 2 does not block uninstall, Force Stop, or Clear Data '
+          'when someone opens Android Settings directly. Android does not allow '
+          'a normal app to enforce that restriction without Device Owner setup. '
+          'This authorization controls only the uninstall route inside SOLO SYSTEM.',
+          style: TextStyle(fontSize: 13, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CLOSE'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.open_in_new, size: 16),
+            label: const Text('OPEN ANDROID APP INFO'),
+          ),
+        ],
+      ),
+    );
+
+    if (openAppInfo == true && mounted) {
+      await _openAppInfoSettings();
     }
   }
 
@@ -435,7 +466,7 @@ class _SecurityPageState extends State<SecurityPage> {
             icon: Icons.delete_forever,
             iconColor: Colors.redAccent,
             title: 'Enter Uninstall Code',
-            subtitle: 'Authorize app uninstall',
+            subtitle: 'Developer code required to continue from SOLO SYSTEM',
             enabled: isRegistered,
             onTap: _handleUninstallCode,
           ),
@@ -480,7 +511,7 @@ class _SecurityPageState extends State<SecurityPage> {
                 _InfoStep(
                   colors: c,
                   number: '5',
-                  text: 'Emergency Unlock and Protected Uninstall require separate codes.',
+                  text: 'Emergency Unlock and Uninstall Authorization require separate one-time codes. Android Settings can still bypass this in-app authorization.',
                   isLast: true,
                 ),
               ],

@@ -100,7 +100,7 @@ class _CodeEntryDialogState extends State<CodeEntryDialog> {
           Text(
             isEmergency
                 ? 'Enter emergency unlock code from Help Center.\nThis will unblock restricted apps for $minutes minutes.'
-                : 'Enter uninstall authorization code from Help Center.\nThis will enable app uninstall.',
+                : 'Enter uninstall authorization code from Help Center.\nA valid one-time code lets SOLO SYSTEM open Android App Info. Android Settings can still be used directly to uninstall or clear app data.',
             style: const TextStyle(fontSize: 12, height: 1.4),
           ),
           const SizedBox(height: 16),
