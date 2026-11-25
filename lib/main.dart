@@ -3311,7 +3311,7 @@ class _StatusPageState extends State<StatusPage>
               _statusRow(
                 context,
                 'TOTAL STUDY TIME',
-                widget.widget.player.totalStudyTimeFormatted,
+                widget.player.totalStudyTimeFormatted,
               ),
               _statusRow(
                 context,
@@ -3327,9 +3327,9 @@ class _StatusPageState extends State<StatusPage>
         ),
         const SizedBox(height: 18),
         _UidSecurityCard(
-          widget.securityController: widget.securityController,
-          widget.supabaseService: widget.supabaseService,
-          widget.uidManager: widget.uidManager,
+          securityController: widget.securityController,
+          supabaseService: widget.supabaseService,
+          uidManager: widget.uidManager,
         ),
         const SizedBox(height: 22),
         const SectionTitle(title: 'ATTRIBUTES'),
