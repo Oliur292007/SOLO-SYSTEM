@@ -41,7 +41,10 @@ void main() {
     await quests.loadQuests();
 
     expect(quests.isPenaltyActive, isTrue);
-    expect(quests.penaltyUntil, penaltyExpiry);
+    expect(
+      quests.penaltyUntil!.millisecondsSinceEpoch,
+      penaltyExpiry.millisecondsSinceEpoch,
+    );
     expect(quests.isNightLockActive, isTrue);
     expect(quests.isAppLockActive, isTrue);
 
