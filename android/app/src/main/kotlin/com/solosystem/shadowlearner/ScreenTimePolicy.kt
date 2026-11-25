@@ -169,6 +169,9 @@ object ScreenTimePolicy {
      * App-lock utilities are recognized conservatively by package/label.
      */
     fun isPenaltyAllowed(context: Context, packageName: String): Boolean {
+        // Telegram remains available during Penalty and Night Lock.
+        if (packageName == "org.telegram.messenger") return true
+
         val allowed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getStringSet(KEY_ALLOWED, emptySet()) ?: emptySet()
         if (packageName in allowed) return true
@@ -209,6 +212,8 @@ object ScreenTimePolicy {
 
     fun isStudyAllowed(context: Context, packageName: String): Boolean {
         if (packageName == context.packageName) return true
+        // Telegram remains available during Study Protection as well.
+        if (packageName == "org.telegram.messenger") return true
 
         // Explicitly allowed apps are available during Study Protection too.
         // YouTube remains the only built-in app exception; other categories
