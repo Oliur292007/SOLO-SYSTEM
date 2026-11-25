@@ -250,15 +250,69 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         handler.postDelayed(screenTimeCheck, delayMs)
     }
 
+    /**
+     * When Android reconnects this service while another app is already open,
+     * there may be no fresh window event for that app. Recover only the latest
+     * foreground package from UsageStats events; no window content is read.
+     */
+    private fun restoreForegroundPackageFromUsageStats() {
+        try {
+            usageWorker.execute {
+                try {
+                    val manager = getSystemService(Context.USAGE_STATS_SERVICE)
+                        as android.app.usage.UsageStatsManager
+                    val now = System.currentTimeMillis()
+                    val events = manager.queryEvents(now - 15_000L, now)
+                    val event = android.app.usage.UsageEvents.Event()
+                    var foregroundPackage: String? = null
+
+                    while (events.hasNextEvent()) {
+                        events.getNextEvent(event)
+                        val packageName = event.packageName ?: continue
+                        when (event.eventType) {
+                            android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED,
+                            android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                                foregroundPackage = packageName
+                            }
+                            android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED,
+                            android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                                if (foregroundPackage == packageName) {
+                                    foregroundPackage = null
+                                }
+                            }
+                        }
+                    }
+
+                    val restoredPackage = foregroundPackage ?: return@execute
+                    handler.post {
+                        if (!isConnected) return@post
+                        currentForegroundPackage = restoredPackage
+                        lastKnownForegroundPackageForTimer = restoredPackage
+                        currentSessionUsageMs = 0L
+                        lastUsageTickElapsed = SystemClock.elapsedRealtime()
+                        scheduleMonitoring()
+                    }
+                } catch (error: Exception) {
+                    Log.w(
+                        "ShadowLearnerAccess",
+                        "Could not restore foreground app after service connection",
+                        error
+                    )
+                }
+            }
+        } catch (error: RejectedExecutionException) {
+            Log.w("ShadowLearnerAccess", "Foreground restore worker unavailable", error)
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         if (usageWorker.isShutdown || usageWorker.isTerminated) {
             usageWorker = Executors.newSingleThreadExecutor()
         }
         usageCheckInFlight.set(false)
-        // Foreground package names are learned from accessibility events.
-        // No active-window content or node text is inspected.
-        lastKnownForegroundPackageForTimer = currentForegroundPackage
+        currentForegroundPackage = null
+        lastKnownForegroundPackageForTimer = null
         lastUsageTickElapsed = SystemClock.elapsedRealtime()
         isConnected = true
         Log.i("ShadowLearnerAccess", "Accessibility service connected")
@@ -271,6 +325,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         lastRedirectAt = 0L
         lastBlockedPackage = null
         scheduleMonitoring()
+        restoreForegroundPackageFromUsageStats()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -399,6 +454,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         Log.w("ShadowLearnerAccess", "Accessibility service unbound by Android")
         isConnected = false
         // A reconnect must rediscover the foreground app instead of reusing stale state.
+        currentForegroundPackage = null
         lastKnownForegroundPackageForTimer = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
@@ -408,6 +464,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         Log.w("ShadowLearnerAccess", "Accessibility service destroyed")
         isConnected = false
+        currentForegroundPackage = null
         lastKnownForegroundPackageForTimer = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
