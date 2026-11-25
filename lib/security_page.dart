@@ -437,7 +437,7 @@ class _SecurityPageState extends State<SecurityPage> {
             colors: c,
             icon: Icons.vpn_key,
             iconColor: c.cyan,
-            title: 'Generate Unlock / Uninstall Code',
+            title: 'Request Unlock / Uninstall Code',
             subtitle: isRegistered
                 ? 'Request codes through the Telegram companion bot'
                 : 'Requires registration',
@@ -487,7 +487,7 @@ class _SecurityPageState extends State<SecurityPage> {
                 _InfoStep(
                   colors: c,
                   number: '1',
-                  text: 'Tap "Generate Unlock / Uninstall Code".',
+                  text: 'Tap "Request Unlock / Uninstall Code".',
                 ),
                 _InfoStep(
                   colors: c,
