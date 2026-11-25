@@ -91,7 +91,11 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     // foregrounded, without generating a new window-state event.
                     val shouldBlockForPenalty = penaltyLockActive &&
                         packageName != null &&
-                        !isSystemAllowedPackage(packageName)
+                        !isSystemAllowedPackage(packageName) &&
+                        !ScreenTimePolicy.isPenaltyAllowed(
+                            this@StudyRestrictionAccessibilityService,
+                            packageName
+                        )
 
                     val shouldBlockForStudy = studyActive &&
                         packageName != null &&
@@ -288,6 +292,10 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             // Penalty and Night Lock override normal app exceptions, including YouTube.
             // The app itself, launcher, phone and emergency/system surfaces remain available.
             if (isPenaltyLockActive()) {
+                if (ScreenTimePolicy.isPenaltyAllowed(this, openedPackage)) {
+                    scheduleMonitoring()
+                    return
+                }
                 redirectHome(openedPackage)
                 return
             }
