@@ -5,12 +5,16 @@ permissions:
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+    inputs:
+      confirm_release:
+        description: "Build, sign, upload, and publish a Shadow Learner release"
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   build:
+    if: ${{ inputs.confirm_release == true }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
