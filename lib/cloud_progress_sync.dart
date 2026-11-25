@@ -32,7 +32,7 @@ class CloudProgressSync {
   static const String _cloudUpdatedKey = 'cloud_progress_updated_ms';
   static const String _lastSnapshotFingerprintKey =
       'cloud_progress_last_snapshot_fingerprint';
-  static const int schemaVersion = 5;
+  static const int schemaVersion = 6;
 
   static const Set<String> _progressKeys = {
     // Player
@@ -58,6 +58,7 @@ class CloudProgressSync {
     'quest_snapshot',
     'penalty_until',
     'night_lock_active',
+    'hp_critical_penalty_applied',
     'quest_timer_starts',
 
     // Study timer
@@ -502,6 +503,13 @@ class CloudProgressSync {
         } else {
           throw FormatException('Unsupported value for $key.');
         }
+      }
+
+      // Older cloud snapshots predate the one-time HP Critical penalty guard.
+      // When such a snapshot wins reconciliation, reset the missing flag to
+      // its safe initial value instead of retaining a stale device-local value.
+      if (!remote.containsKey('hp_critical_penalty_applied')) {
+        await prefs.setBool('hp_critical_penalty_applied', false);
       }
 
       // Migrate backups created before the combined HP/MP event ledger existed.

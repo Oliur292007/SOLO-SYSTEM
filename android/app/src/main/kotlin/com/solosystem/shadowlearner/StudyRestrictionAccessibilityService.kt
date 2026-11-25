@@ -70,8 +70,9 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 usageWorker.execute {
                     try {
                     val nowElapsed = SystemClock.elapsedRealtime()
-                    val studyActive = isStudyProtectionActive()
-                    val penaltyLockActive = isPenaltyLockActive()
+                    val emergencyUnlockActive = isEmergencyUnlockActive()
+                    val studyActive = isStudyProtectionActive() && !emergencyUnlockActive
+                    val penaltyLockActive = isPenaltyLockActive() && !emergencyUnlockActive
                     updateYouTubeWarning(packageName, nowElapsed, studyActive)
                     val today = usageDayKey()
 
@@ -111,7 +112,8 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                         )
 
                     var shouldBlock = false
-                    if (packageName != null &&
+                    if (!emergencyUnlockActive &&
+                        packageName != null &&
                         !isSystemAllowedPackage(packageName) &&
                         !penaltyExempt &&
                         ScreenTimePolicy.hasUsageAccess(this@StudyRestrictionAccessibilityService)
@@ -225,6 +227,13 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             prefs.getBoolean(ScheduledStudyProtectionReceiver.KEY_SCHEDULE_ACTIVE, false)
     }
 
+    /** Reads the developer-authorized emergency unlock window from Flutter preferences. */
+    private fun isEmergencyUnlockActive(): Boolean {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+        val unlockUntil = prefs.getLong("flutter.emergency_unlock_until_ms", 0L)
+        return unlockUntil > System.currentTimeMillis()
+    }
+
     /** Reads the persisted Flutter penalty and Night Lock state using absolute expiry time. */
     private fun isPenaltyLockActive(): Boolean {
         val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
@@ -294,6 +303,14 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             }
 
             if (isSystemAllowedPackage(openedPackage)) return
+
+            // A developer-authorized emergency window temporarily bypasses every
+            // app restriction. The absolute expiry is checked natively so the
+            // bypass also expires when Flutter is closed or the device restarts.
+            if (isEmergencyUnlockActive()) {
+                scheduleMonitoring()
+                return
+            }
 
             // Penalty and Night Lock override normal app exceptions, including YouTube.
             // The app itself, launcher, phone and emergency/system surfaces remain available.
