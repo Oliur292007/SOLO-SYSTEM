@@ -205,6 +205,44 @@ void main() {
     await timer.cancel(player: player);
   });
 
+  test('paused quest timer survives restart and resumes without double reservation', () async {
+    final player = PlayerSystem();
+    await player.loadPlayer();
+
+    final timer = StudyTimer();
+    await timer.loadTimer(player: player);
+    final started = await timer.start(
+      questId: 'restart_test_quest',
+      durationMinutes: 30,
+      player: player,
+    );
+
+    expect(started, isTrue);
+    expect(timer.reservedMpAmount, 10);
+    await timer.pause();
+    final pausedRemaining = timer.remainingSeconds;
+
+    expect(timer.isRunning, isFalse);
+    expect(pausedRemaining, greaterThan(0));
+
+    final restoredTimer = StudyTimer();
+    await restoredTimer.loadTimer(player: player);
+
+    expect(restoredTimer.activeQuestId, 'restart_test_quest');
+    expect(restoredTimer.isRunning, isFalse);
+    expect(restoredTimer.remainingSeconds, pausedRemaining);
+    expect(restoredTimer.reservedMpAmount, 10);
+
+    await restoredTimer.resume();
+
+    expect(restoredTimer.isRunning, isTrue);
+    expect(restoredTimer.activeQuestId, 'restart_test_quest');
+    expect(restoredTimer.reservedMpAmount, 10);
+    expect(restoredTimer.availableMp(player), 90);
+
+    await restoredTimer.cancel();
+  });
+
   test('timer cannot reserve more MP than the player has', () async {
     final player = PlayerSystem();
     await player.loadPlayer();
