@@ -160,6 +160,53 @@ object ScreenTimePolicy {
             latestPackage
         }.getOrNull()
     }
+    /**
+     * Apps that must remain usable during a penalty or Night Lock.
+     *
+     * The user's explicit allowlist is always respected. The active Android
+     * default dialer is detected dynamically, so different manufacturers and
+     * regional dialer packages work without hard-coding every package name.
+     * App-lock utilities are recognized conservatively by package/label.
+     */
+    fun isPenaltyAllowed(context: Context, packageName: String): Boolean {
+        val allowed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet(KEY_ALLOWED, emptySet()) ?: emptySet()
+        if (packageName in allowed) return true
+
+        // Always preserve the configured default Phone/Dialer app on this device.
+        val telecom = context.getSystemService(Context.TELECOM_SERVICE)
+            as? android.telecom.TelecomManager
+        if (packageName == telecom?.defaultDialerPackage) return true
+
+        // User-requested apps that are not necessarily the system default dialer.
+        val knownEssentialPackages = setOf(
+            "com.brillian.connect.com.bd",
+            "com.transsion.applock"
+        )
+        if (packageName in knownEssentialPackages) return true
+
+        // Education/learning apps remain available during Penalty and Night Lock.
+        // Include Udvash-Unmesh explicitly, then use the shared app classifier
+        // so other educational apps are recognized by package, category, or label.
+        if (packageName == "com.udvashunmesh.online") return true
+        if (categoryFor(context, packageName) == "education") return true
+
+        // App-lock package names vary across OEMs. Use narrow matching rather
+        // than allowing every app whose name merely contains the word "lock".
+        val normalizedPackage = packageName.lowercase()
+        val packageLooksLikeAppLock = listOf(
+            "applock", "app_lock", "privacylock", "privacy_lock", "applicationlock"
+        ).any { normalizedPackage.contains(it) }
+        if (packageLooksLikeAppLock) return true
+
+        val label = runCatching {
+            val info = context.packageManager.getApplicationInfo(packageName, 0)
+            context.packageManager.getApplicationLabel(info).toString().lowercase()
+        }.getOrDefault("")
+        return listOf("app lock", "applock", "privacy lock", "application lock")
+            .any { label.contains(it) }
+    }
+
     fun isStudyAllowed(context: Context, packageName: String): Boolean {
         if (packageName == context.packageName) return true
         return categoryFor(context, packageName) == "youtube_special"

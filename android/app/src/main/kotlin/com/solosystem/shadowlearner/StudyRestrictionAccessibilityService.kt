@@ -71,6 +71,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     try {
                     val nowElapsed = SystemClock.elapsedRealtime()
                     val studyActive = isStudyProtectionActive()
+                    val penaltyLockActive = isPenaltyLockActive()
                     updateYouTubeWarning(packageName, nowElapsed, studyActive)
                     val today = usageDayKey()
 
@@ -88,9 +89,22 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     // Re-check the already-open foreground app on every watchdog
                     // pass. A schedule can become active while an app is already
                     // foregrounded, without generating a new window-state event.
+                    val penaltyAllowed = packageName != null &&
+                        ScreenTimePolicy.isPenaltyAllowed(
+                            this@StudyRestrictionAccessibilityService,
+                            packageName
+                        )
+                    val penaltyExempt = penaltyLockActive && penaltyAllowed
+
+                    val shouldBlockForPenalty = penaltyLockActive &&
+                        packageName != null &&
+                        !isSystemAllowedPackage(packageName) &&
+                        !penaltyAllowed
+
                     val shouldBlockForStudy = studyActive &&
                         packageName != null &&
                         !isSystemAllowedPackage(packageName) &&
+                        !penaltyExempt &&
                         !ScreenTimePolicy.isStudyAllowed(
                             this@StudyRestrictionAccessibilityService,
                             packageName
@@ -99,6 +113,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     var shouldBlock = false
                     if (packageName != null &&
                         !isSystemAllowedPackage(packageName) &&
+                        !penaltyExempt &&
                         ScreenTimePolicy.hasUsageAccess(this@StudyRestrictionAccessibilityService)
                     ) {
                         val usage = ScreenTimePolicy.usageByPackage(
@@ -114,7 +129,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                         )
                     }
 
-                    if ((shouldBlockForStudy || shouldBlock) && packageName != null) {
+                    if ((shouldBlockForPenalty || shouldBlockForStudy || shouldBlock) && packageName != null) {
                         handler.post {
                             if (isConnected &&
                                 currentForegroundPackage == packageName
@@ -210,6 +225,15 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             prefs.getBoolean(ScheduledStudyProtectionReceiver.KEY_SCHEDULE_ACTIVE, false)
     }
 
+    /** Reads the persisted Flutter penalty and Night Lock state using absolute expiry time. */
+    private fun isPenaltyLockActive(): Boolean {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+        val penaltyUntil = prefs.getLong("flutter.penalty_until", 0L)
+        val penaltyActive = penaltyUntil > System.currentTimeMillis()
+        val nightLockActive = prefs.getBoolean("flutter.night_lock_active", false)
+        return penaltyActive || nightLockActive
+    }
+
     /** Keep one watchdog callback only; policy scans run on usageWorker. */
     private fun scheduleMonitoring(delayMs: Long = 0L) {
         if (!isConnected) return
@@ -270,6 +294,17 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             }
 
             if (isSystemAllowedPackage(openedPackage)) return
+
+            // Penalty and Night Lock override normal app exceptions, including YouTube.
+            // The app itself, launcher, phone and emergency/system surfaces remain available.
+            if (isPenaltyLockActive()) {
+                if (ScreenTimePolicy.isPenaltyAllowed(this, openedPackage)) {
+                    scheduleMonitoring()
+                    return
+                }
+                redirectHome(openedPackage)
+                return
+            }
 
             // Study Protection is time-critical and uses only a SharedPreferences
             // read here; it never waits for the UsageStats worker.
