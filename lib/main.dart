@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'notification_service.dart';
 import 'notification_pages.dart';
+import 'mandatory_permission_gate.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'player_system.dart';
 import 'quest_system.dart';
@@ -265,7 +266,9 @@ class _ShadowLearnerAppState extends State<ShadowLearnerApp> {
         useMaterial3: true,
       ),
       themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      home: SystemHome(
+      home: MandatoryPermissionGate(
+        notificationService: widget.notificationService,
+        child: SystemHome(
         player: widget.player,
         questSystem: widget.questSystem,
         isDarkMode: isDarkMode,
@@ -280,6 +283,7 @@ class _ShadowLearnerAppState extends State<ShadowLearnerApp> {
         cloudProgressSync: widget.cloudProgressSync,
         appUpdateService: widget.appUpdateService,
         appVersionLabel: appVersionLabel,
+        ),
       ),
     );
   }
@@ -745,57 +749,12 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
   }
 
   Future<void> _showFirstLaunchSetup() async {
-    const onboardingVersion = 8;
-    const onboardingVersionKey = 'first_launch_onboarding_version';
+    // Permission onboarding is now enforced by MandatoryPermissionGate.
+    // Keep the legacy version marker current so old deferred prompts do not
+    // reappear after the user has completed the mandatory setup.
     final prefs = await SharedPreferences.getInstance();
-    final deferredUntil =
-        prefs.getInt('permission_setup_deferred_until') ?? 0;
-    if (deferredUntil > DateTime.now().millisecondsSinceEpoch) return;
-    if ((prefs.getInt(onboardingVersionKey) ?? 0) >= onboardingVersion) {
-      return;
-    }
-    if (!mounted) return;
-
-    final continueSetup = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('SET UP SHADOW LEARNER PERMISSIONS'),
-        content: const Text(
-          'Complete the permission checklist for Notifications, Exact Alarms, '
-          'App Usage Access, Accessibility and background/battery settings. '
-          'Android will ask you to approve special access in its own Settings screens.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('NOT NOW'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('OPEN PERMISSION SETUP'),
-          ),
-        ],
-      ),
-    );
-
-    if (!mounted) return;
-    if (continueSetup == true) {
-      await prefs.remove('permission_setup_deferred_until');
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => PermissionManagementPage(
-            notificationService: widget.notificationService,
-          ),
-        ),
-      );
-      await prefs.setInt(onboardingVersionKey, onboardingVersion);
-    } else {
-      await prefs.setInt(
-        'permission_setup_deferred_until',
-        DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch,
-      );
-    }
+    await prefs.setInt('first_launch_onboarding_version', 8);
+    await prefs.remove('permission_setup_deferred_until');
   }
 
   Future<void> _showRegistrationPrompt() async {

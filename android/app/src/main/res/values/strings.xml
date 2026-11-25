@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">Shadow Learner</string>
     <string name="app_company_name">Solo System</string>
-    <string name="study_protection_service_description">When a Shadow Learner study timer is running, return to Home if a non-essential app is opened.</string>
+    <string name="study_protection_service_description">During Study Protection, Shadow Learner observes accessibility window-change events and foreground app package names to enforce app restrictions and timer rules. It does not inspect on-screen text or message content.</string>
 </resources>

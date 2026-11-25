@@ -256,9 +256,8 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             usageWorker = Executors.newSingleThreadExecutor()
         }
         usageCheckInFlight.set(false)
-        currentForegroundPackage = runCatching {
-            rootInActiveWindow?.packageName?.toString()?.takeIf { it.isNotBlank() }
-        }.getOrNull()
+        // Foreground package names are learned from accessibility events.
+        // No active-window content or node text is inspected.
         lastKnownForegroundPackageForTimer = currentForegroundPackage
         lastUsageTickElapsed = SystemClock.elapsedRealtime()
         isConnected = true
@@ -281,11 +280,8 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
             ) return
 
-            val foregroundPackage = rootInActiveWindow?.packageName?.toString()
-                ?.takeIf { it.isNotBlank() }
-            val openedPackage = foregroundPackage
-                ?: event.packageName?.toString()?.takeIf { it.isNotBlank() }
-                ?: return
+            val openedPackage =
+                event.packageName?.toString()?.takeIf { it.isNotBlank() } ?: return
 
             lastKnownForegroundPackageForTimer = openedPackage
             if (ScreenTimePolicy.categoryFor(this, openedPackage) != "youtube_special") {

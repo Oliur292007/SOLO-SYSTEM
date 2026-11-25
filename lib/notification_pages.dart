@@ -263,10 +263,10 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text('APP PERMISSION MANAGEMENT',
+          const Text('MANDATORY APP PERMISSIONS',
               style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
           const SizedBox(height: 8),
-          const Text('Tap each item to open the required Android permission screen. Return here afterward; the status refreshes automatically.'),
+          const Text('Dashboard, Quests, Status and other app features stay locked until all five required Android access settings are enabled. Tap each item, approve it in Android Settings, then return here. The app unlocks automatically when every required status is verified.'),
           const SizedBox(height: 14),
           _permissionTile(
             icon: Icons.notifications_active_outlined,
@@ -363,9 +363,9 @@ class _PermissionManagementPageState extends State<PermissionManagementPage>
           Card(
             child: ListTile(
               leading: const Icon(Icons.battery_charging_full),
-              title: const Text('Background / Battery Optimization'),
+              title: const Text('Manufacturer Background Launch (Manual)'),
               subtitle: const Text(
-                'For reliable Study Protection, open App Info > Battery and choose Unrestricted or Allow background activity if available. On Infinix/XOS, also allow Auto-start or Background launch if those options are available.',
+                'Recommended for reliability: on Infinix/XOS, open App Info > Battery and choose Unrestricted or Allow background activity if available. Also enable Auto-start or Background launch if available. Android does not provide a reliable API for this manufacturer-specific setting, so Shadow Learner cannot verify it automatically.',
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _open('openAppDetailsSettings'),
