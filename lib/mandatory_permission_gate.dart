@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -28,17 +30,26 @@ class _MandatoryPermissionGateState extends State<MandatoryPermissionGate>
 
   bool _checking = true;
   bool _ready = false;
+  bool _refreshInProgress = false;
+  Timer? _permissionPollTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _refreshPermissions();
+    _permissionPollTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) {
+        if (!_ready) _refreshPermissions();
+      },
+    );
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _permissionPollTimer?.cancel();
     super.dispose();
   }
 
@@ -50,6 +61,8 @@ class _MandatoryPermissionGateState extends State<MandatoryPermissionGate>
   }
 
   Future<void> _refreshPermissions() async {
+    if (_refreshInProgress || _ready) return;
+    _refreshInProgress = true;
     if (_checking == false && mounted) {
       setState(() => _checking = true);
     }
@@ -84,6 +97,7 @@ class _MandatoryPermissionGateState extends State<MandatoryPermissionGate>
       debugPrint('MANDATORY PERMISSION CHECK ERROR: $error');
     }
 
+    _refreshInProgress = false;
     if (!mounted) return;
     setState(() {
       _ready = notifications &&
@@ -94,6 +108,7 @@ class _MandatoryPermissionGateState extends State<MandatoryPermissionGate>
           batteryExemption;
       _checking = false;
     });
+    if (_ready) _permissionPollTimer?.cancel();
   }
 
   @override
