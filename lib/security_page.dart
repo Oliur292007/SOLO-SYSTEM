@@ -447,14 +447,12 @@ class _SecurityPageState extends State<SecurityPage> {
 
           const SizedBox(height: 8),
 
-          const SizedBox(height: 8),
-
           _ActionTile(
             colors: c,
             icon: Icons.lock_open,
             iconColor: Colors.green,
             title: 'Enter Emergency Unlock Code',
-            subtitle: 'Unblock restricted apps for 60 minutes',
+            subtitle: 'Unblock restricted apps for ${widget.supabaseService.emergencyUnlockMinutes} minutes',
             enabled: isRegistered,
             onTap: _handleEmergencyUnlock,
           ),
