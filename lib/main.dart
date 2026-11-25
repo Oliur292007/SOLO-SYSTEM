@@ -716,19 +716,34 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
 
   Future<void> _syncMissionNotifications() async {
     final schedules = widget.timetableSystem.allSchedules;
-    await widget.notificationService.syncMissionReminders(schedules);
-    // Native exact alarms enforce Study Protection even while Flutter is closed.
-    await _appRestrictionChannel.invokeMethod<bool>(
-      'syncStudyProtectionSchedules',
-      <String, dynamic>{
-        'schedules': schedules.map((item) => <String, dynamic>{
-          'id': item.id,
-          'dayOfWeek': item.dayOfWeek,
-          'startTime': item.startTime,
-          'durationMinutes': item.durationMinutes,
-        }).toList(),
-      },
-    );
+
+    // Study Protection has its own native alarm pipeline. Keep it independent
+    // from notification scheduling so a notification error cannot prevent
+    // Android from receiving the weekly restriction schedule.
+    try {
+      await _appRestrictionChannel.invokeMethod<bool>(
+        'syncStudyProtectionSchedules',
+        <String, dynamic>{
+          'schedules': schedules.map((item) => <String, dynamic>{
+            'id': item.id,
+            'dayOfWeek': item.dayOfWeek,
+            'startTime': item.startTime,
+            'durationMinutes': item.durationMinutes,
+          }).toList(),
+        },
+      );
+    } catch (error, stackTrace) {
+      debugPrint('STUDY PROTECTION SCHEDULE SYNC ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    // Mission reminders are useful, but they must never gate app enforcement.
+    try {
+      await widget.notificationService.syncMissionReminders(schedules);
+    } catch (error, stackTrace) {
+      debugPrint('MISSION NOTIFICATION SCHEDULING ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<void> _syncMissionNotificationsSafely() async {
