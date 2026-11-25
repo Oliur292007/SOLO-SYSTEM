@@ -85,6 +85,17 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                     }
                     lastUsageTickElapsed = nowElapsed
 
+                    // Re-check the already-open foreground app on every watchdog
+                    // pass. A schedule can become active while an app is already
+                    // foregrounded, without generating a new window-state event.
+                    val shouldBlockForStudy = studyActive &&
+                        packageName != null &&
+                        !isSystemAllowedPackage(packageName) &&
+                        !ScreenTimePolicy.isStudyAllowed(
+                            this@StudyRestrictionAccessibilityService,
+                            packageName
+                        )
+
                     var shouldBlock = false
                     if (packageName != null &&
                         !isSystemAllowedPackage(packageName) &&
@@ -103,7 +114,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                         )
                     }
 
-                    if (shouldBlock && packageName != null) {
+                    if ((shouldBlockForStudy || shouldBlock) && packageName != null) {
                         handler.post {
                             if (isConnected &&
                                 currentForegroundPackage == packageName

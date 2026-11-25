@@ -3226,6 +3226,8 @@ class _StatusPageState extends State<StatusPage>
 
   Timer? _statusRefreshTimer;
   bool? _studyProtectionActive;
+  bool? _studyAccessibilityEnabled;
+  bool? _studyAccessibilityConnected;
 
   @override
   void initState() {
@@ -3247,13 +3249,24 @@ class _StatusPageState extends State<StatusPage>
 
   Future<void> _refreshStudyProtectionStatus() async {
     try {
-      final active = await _restrictionChannel.invokeMethod<bool>(
-        'isStudyProtectionActive',
-      );
-      if (!mounted || active == null || active == _studyProtectionActive) {
-        return;
+      final results = await Future.wait<bool>([
+        _restrictionChannel.invokeMethod<bool>('isStudyProtectionActive')
+            .then((value) => value ?? false),
+        _restrictionChannel.invokeMethod<bool>('isAccessibilityEnabled')
+            .then((value) => value ?? false),
+        _restrictionChannel.invokeMethod<bool>('isAccessibilityServiceConnected')
+            .then((value) => value ?? false),
+      ]);
+      if (!mounted) return;
+      if (_studyProtectionActive != results[0] ||
+          _studyAccessibilityEnabled != results[1] ||
+          _studyAccessibilityConnected != results[2]) {
+        setState(() {
+          _studyProtectionActive = results[0];
+          _studyAccessibilityEnabled = results[1];
+          _studyAccessibilityConnected = results[2];
+        });
       }
-      setState(() => _studyProtectionActive = active);
     } catch (error) {
       debugPrint('STUDY PROTECTION STATUS ERROR: $error');
     }
@@ -3316,11 +3329,17 @@ class _StatusPageState extends State<StatusPage>
               _statusRow(
                 context,
                 'STUDY PROTECTION',
-                _studyProtectionActive == null
+                _studyProtectionActive == null ||
+                        _studyAccessibilityEnabled == null ||
+                        _studyAccessibilityConnected == null
                     ? 'CHECKING...'
-                    : _studyProtectionActive!
-                        ? 'ACTIVE'
-                        : 'INACTIVE',
+                    : !_studyProtectionActive!
+                        ? 'INACTIVE'
+                        : !_studyAccessibilityEnabled!
+                            ? 'ACTIVE • ENABLE ACCESSIBILITY'
+                            : !_studyAccessibilityConnected!
+                                ? 'ACTIVE • SERVICE NOT CONNECTED'
+                                : 'ACTIVE',
               ),
             ],
           ),
