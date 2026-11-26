@@ -335,8 +335,15 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
             ) return
 
-            val openedPackage =
-                event.packageName?.toString()?.takeIf { it.isNotBlank() } ?: return
+            // OEMs may report System UI/overlay as the event package even
+            // while a restricted app is the actual foreground window. Prefer
+            // the active window package; only its package name is read.
+            val foregroundWindowPackage = runCatching {
+                rootInActiveWindow?.packageName?.toString()?.takeIf { it.isNotBlank() }
+            }.getOrNull()
+            val openedPackage = foregroundWindowPackage
+                ?: event.packageName?.toString()?.takeIf { it.isNotBlank() }
+                ?: return
 
             lastKnownForegroundPackageForTimer = openedPackage
             if (ScreenTimePolicy.categoryFor(this, openedPackage) != "youtube_special") {
