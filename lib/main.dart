@@ -2492,6 +2492,7 @@ class QuestPage extends StatelessWidget {
                             context,
                             studyTimer,
                             player,
+                            questSystem,
                           ),
                           icon: const Icon(Icons.close, size: 18),
                           label: const Text('Cancel'),
@@ -2837,6 +2838,7 @@ class QuestPage extends StatelessWidget {
     BuildContext context,
     StudyTimer studyTimer,
     PlayerSystem player,
+    QuestSystem questSystem,
   ) async {
     final startedAt = studyTimer.startedAtTime;
     final elapsed = startedAt != null
@@ -2914,7 +2916,10 @@ class QuestPage extends StatelessWidget {
     );
 
     if (confirmed == true) {
-      final damage = await studyTimer.cancel(player: player);
+      final damage = await studyTimer.cancel(
+        player: player,
+        questSystem: questSystem,
+      );
       if (!context.mounted) return;
       if (damage > 0) {
         ScaffoldMessenger.of(context).showSnackBar(

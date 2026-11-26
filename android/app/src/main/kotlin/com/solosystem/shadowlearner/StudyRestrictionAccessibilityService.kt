@@ -524,7 +524,19 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     private fun isSystemAllowedPackage(packageName: String): Boolean {
         if (packageName == this.packageName) return true
         val p = packageName.lowercase()
-        return p.contains("launcher") ||
+
+        // Only the device's resolved HOME app is treated as Android's home
+        // surface. Do not exempt arbitrary packages merely because their
+        // package name contains the word "launcher".
+        val isDefaultHomePackage = runCatching {
+            val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            packageManager.resolveActivity(
+                homeIntent,
+                PackageManager.MATCH_DEFAULT_ONLY
+            )?.activityInfo?.packageName == packageName
+        }.getOrDefault(false)
+
+        return isDefaultHomePackage ||
             p.contains("systemui") ||
             p.contains("permissioncontroller") ||
             p.contains("packageinstaller") ||
