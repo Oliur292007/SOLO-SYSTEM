@@ -108,7 +108,9 @@ BEGIN
     v_total := v_total + v_count;
 
     -- Remove any audit entry created by a delete trigger during the transaction.
-    DELETE FROM public.audit_log WHERE uid = upper(p_uid);
+    DELETE FROM public.audit_log
+     WHERE uid = upper(p_uid)
+        OR metadata ->> 'uid' = upper(p_uid);
     GET DIAGNOSTICS v_count = ROW_COUNT;
     v_deleted := jsonb_set(
         v_deleted,
