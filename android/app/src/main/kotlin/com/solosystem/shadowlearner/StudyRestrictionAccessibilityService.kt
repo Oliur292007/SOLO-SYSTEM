@@ -555,7 +555,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     }
 
     private fun cancelHomeTransitionTimerPause() {
-        pendingHomeTransitionTimerPause?.let(handler::removeCallbacks)
+        pendingHomeTransitionTimerPause?.let { handler.removeCallbacks(it) }
         pendingHomeTransitionTimerPause = null
     }
 
@@ -564,7 +564,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
 
         // Keep the actual HOME surface available to avoid a redirect loop.
         // This is resolved by Android instead of guessing from package names.
-        val isDefaultHomePackage = isDefaultHomePackage(packageName)
+        val isHomePackage = isDefaultHomePackage(packageName)
 
         // Exact Android component package IDs only. Broad substring checks such
         // as "dialer", "telecom", "emergency", or "clock" can accidentally
@@ -610,7 +610,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             isResolvedHandler && isSystemHandler
         }.getOrDefault(false)
 
-        return isDefaultHomePackage || isCoreAndroidPackage ||
+        return isHomePackage || isCoreAndroidPackage ||
             isSystemDefaultDialer || isSystemEmergencyHandler
     }
 
@@ -626,6 +626,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         // A reconnect must rediscover the foreground app instead of reusing stale state.
         currentForegroundPackage = null
         lastKnownForegroundPackageForTimer = null
+        pendingHomeTransitionTimerPause = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
         foregroundWorker.shutdownNow()
@@ -637,6 +638,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         isConnected = false
         currentForegroundPackage = null
         lastKnownForegroundPackageForTimer = null
+        pendingHomeTransitionTimerPause = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
         foregroundWorker.shutdownNow()
