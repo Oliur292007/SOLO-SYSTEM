@@ -394,7 +394,7 @@ Do not commit signing keys, service-role keys, bot tokens, device tokens, or oth
 - Android may restrict background services, alarms, and usage reporting differently across manufacturers and OS versions.
 - Exact notification timing depends on Android alarm permissions and battery-management behavior.
 - The in-app uninstall authorization route does not prevent uninstalling from Android Settings.
-- Cloud restore and synchronization require a registered/paird Player UID, a paired device, and a working network connection.
+- Cloud restore and synchronization require a registered/paired Player UID, a paired device, and a working network connection.
 - Screen Time totals and enforcement depend on Android UsageStats availability and the configured app categories and limits.
 
 These constraints are stated so that the app's capabilities are not confused with operating-system privileges it does not have.
