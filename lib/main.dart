@@ -21,6 +21,7 @@ import 'security_controller.dart';
 import 'security_page.dart';
 import 'screen_time_page.dart';
 import 'app_update_service.dart';
+import 'privacy_policy_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -3859,6 +3860,21 @@ class SettingsPage extends StatelessWidget {
                     style: TextStyle(color: c.muted)),
                 trailing: Icon(Icons.chevron_right, color: c.muted),
                 onTap: onCheckForUpdates,
+              ),
+              Divider(color: c.divider, height: 1),
+              ListTile(
+                leading: Icon(Icons.privacy_tip_outlined, color: c.cyan),
+                title: Text('Privacy Policy', style: TextStyle(color: c.text)),
+                subtitle: Text(
+                  'How your information is used and protected',
+                  style: TextStyle(color: c.muted),
+                ),
+                trailing: Icon(Icons.chevron_right, color: c.muted),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PrivacyPolicyPage(),
+                  ),
+                ),
               ),
               Divider(color: c.divider, height: 1),
               ListTile(
