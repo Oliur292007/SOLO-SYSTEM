@@ -555,6 +555,25 @@ class CloudProgressSync {
     );
   }
 
+  /// Upload the current local snapshot immediately after an explicit profile edit.
+  /// This avoids relying only on a debounced listener for Player Name changes.
+  Future<bool> uploadCurrentProgressNow() async {
+    if (!isPaired || _isApplyingRemote || _isSyncing) return false;
+
+    _debounce?.cancel();
+    _isSyncing = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        _localChangedKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      return await _uploadSnapshot();
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
   void scheduleSync({Duration delay = const Duration(seconds: 3)}) {
     if (!isPaired || _isApplyingRemote) return;
 
