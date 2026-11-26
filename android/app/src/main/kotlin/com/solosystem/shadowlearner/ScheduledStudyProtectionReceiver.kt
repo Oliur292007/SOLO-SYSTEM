@@ -52,6 +52,7 @@ class ScheduledStudyProtectionReceiver : BroadcastReceiver() {
                     put("dayOfWeek", (item["dayOfWeek"] as Number).toInt())
                     put("startTime", item["startTime"].toString())
                     put("durationMinutes", (item["durationMinutes"] as Number).toInt())
+                    put("completedDate", item["completedDate"]?.toString() ?: "")
                 })
             }
             prefs.edit().putString(KEY_SCHEDULES, array.toString()).apply()
@@ -88,6 +89,21 @@ class ScheduledStudyProtectionReceiver : BroadcastReceiver() {
                 if (day !in 1..7 || duration <= 0) continue
 
                 val now = Calendar.getInstance()
+                val completedDate = item.optString("completedDate")
+                if (completedDate == calendarDateKey(now)) {
+                    // A quest completed early must not keep today's protection
+                    // window active. Preserve only the next weekly occurrence.
+                    val nextStart = nextOccurrence(day, hour, minute)
+                    if (calendarDateKey(nextStart) == calendarDateKey(now)) {
+                        nextStart.add(Calendar.DAY_OF_YEAR, 7)
+                    }
+                    val nextEnd = nextStart.clone() as Calendar
+                    nextEnd.add(Calendar.MINUTE, duration)
+                    setBoundary(context, alarm, requestCode(id, 0), nextStart.timeInMillis)
+                    setBoundary(context, alarm, requestCode(id, 1), nextEnd.timeInMillis)
+                    continue
+                }
+
                 val currentStart = occurrenceInCurrentWeek(day, hour, minute, now)
                 val currentEnd = currentStart.clone() as Calendar
                 currentEnd.add(Calendar.MINUTE, duration)
@@ -174,6 +190,15 @@ class ScheduledStudyProtectionReceiver : BroadcastReceiver() {
             return target
         }
 
+        private fun calendarDateKey(calendar: Calendar): String =
+            String.format(
+                java.util.Locale.US,
+                "%04d-%02d-%02d",
+                calendar.get(Calendar.YEAR),
+                calendar.get(Calendar.MONTH) + 1,
+                calendar.get(Calendar.DAY_OF_MONTH)
+            )
+
         private fun isWithinAnySchedule(schedules: JSONArray, now: Calendar): Boolean {
             for (i in 0 until schedules.length()) {
                 val item = schedules.optJSONObject(i) ?: continue
@@ -195,6 +220,10 @@ class ScheduledStudyProtectionReceiver : BroadcastReceiver() {
                     occurrence.set(Calendar.MINUTE, minute)
                     occurrence.set(Calendar.SECOND, 0)
                     occurrence.set(Calendar.MILLISECOND, 0)
+                    // Completion suppresses only the occurrence on that date.
+                    if (item.optString("completedDate") == calendarDateKey(occurrence)) {
+                        continue
+                    }
                     val end = occurrence.clone() as Calendar
                     end.add(Calendar.MINUTE, duration)
                     if (!now.before(occurrence) && now.before(end)) return true

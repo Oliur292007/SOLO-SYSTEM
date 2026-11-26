@@ -730,6 +730,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             'dayOfWeek': item.dayOfWeek,
             'startTime': item.startTime,
             'durationMinutes': item.durationMinutes,
+            'completedDate': item.completedDate,
           }).toList(),
         },
       );
