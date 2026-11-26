@@ -522,6 +522,9 @@ class StudyTimer extends ChangeNotifier {
     remainingSeconds = 0;
     endTime = null;
     startedAt = null;
+    _questPolicyEnabled = false;
+    _questAllowedAppPackages = [];
+    _physicalStudy = false;
 
     isRunning = false;
     isFinished = false;
@@ -537,6 +540,9 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_finishedKey);
     await prefs.remove(_reservedMpKey);
     await prefs.remove(_startedAtKey);
+    await prefs.remove(_questPolicyEnabledKey);
+    await prefs.remove(_questAllowedAppsKey);
+    await prefs.remove(_physicalStudyKey);
 
     await _syncNativeRestriction();
     notifyListeners();
