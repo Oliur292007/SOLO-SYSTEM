@@ -523,11 +523,9 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
 
     private fun isSystemAllowedPackage(packageName: String): Boolean {
         if (packageName == this.packageName) return true
-        val p = packageName.lowercase()
 
-        // Only the device's resolved HOME app is treated as Android's home
-        // surface. Do not exempt arbitrary packages merely because their
-        // package name contains the word "launcher".
+        // Keep the actual HOME surface available to avoid a redirect loop.
+        // This is resolved by Android instead of guessing from package names.
         val isDefaultHomePackage = runCatching {
             val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
             packageManager.resolveActivity(
@@ -536,17 +534,37 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             )?.activityInfo?.packageName == packageName
         }.getOrDefault(false)
 
-        return isDefaultHomePackage ||
-            p.contains("systemui") ||
-            p.contains("permissioncontroller") ||
-            p.contains("packageinstaller") ||
-            p.contains("dialer") ||
-            p == "com.android.phone" ||
-            p.contains("incallui") ||
-            p.contains("telecom") ||
-            p.contains("emergency") ||
-            p.contains("deskclock") ||
-            p.contains("clock")
+        // Exact Android component package IDs only. Broad substring checks such
+        // as "dialer", "telecom", "emergency", or "clock" can accidentally
+        // exempt unrelated third-party apps with similar package names.
+        val isCoreAndroidPackage = packageName in setOf(
+            "com.android.systemui",
+            "com.google.android.systemui",
+            "com.android.permissioncontroller",
+            "com.google.android.permissioncontroller",
+            "com.android.packageinstaller",
+            "com.google.android.packageinstaller",
+            "com.android.phone",
+            "com.android.server.telecom",
+            "com.android.emergency",
+            "com.google.android.emergency",
+            "com.android.cellbroadcastreceiver",
+            "com.google.android.cellbroadcastreceiver"
+        )
+
+        // The device's selected dialer is exempt only when it is a preinstalled
+        // or updated system app. A user-installed dialer is not a system bypass.
+        val isSystemDefaultDialer = runCatching {
+            val telecom = getSystemService(Context.TELECOM_SERVICE)
+                as? android.telecom.TelecomManager
+            val isSelectedDialer = telecom?.defaultDialerPackage == packageName
+            val appInfo = packageManager.getApplicationInfo(packageName, 0)
+            val systemFlags = android.content.pm.ApplicationInfo.FLAG_SYSTEM or
+                android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP
+            isSelectedDialer && (appInfo.flags and systemFlags) != 0
+        }.getOrDefault(false)
+
+        return isDefaultHomePackage || isCoreAndroidPackage || isSystemDefaultDialer
     }
 
     override fun onInterrupt() {
