@@ -289,6 +289,38 @@ class QuestSystem extends ChangeNotifier {
     return questId.substring(_scheduleIdPrefix.length);
   }
 
+  /// App-access policy attached to a scheduled Quest.
+  Map<String, dynamic> questAppPolicyForQuest(String questId) {
+    final scheduleId = scheduleIdFromQuestId(questId);
+    if (scheduleId == null) {
+      return {
+        'enabled': false,
+        'allowedAppPackages': <String>[],
+        'physicalStudy': false,
+      };
+    }
+
+    final schedule = timetableSystem.getScheduleById(scheduleId);
+    if (schedule == null) {
+      return {
+        'enabled': false,
+        'allowedAppPackages': <String>[],
+        'physicalStudy': false,
+      };
+    }
+
+    final physicalStudy = schedule.physicalStudy;
+    final packages = physicalStudy
+        ? <String>[]
+        : List<String>.from(schedule.allowedAppPackages);
+
+    return {
+      'enabled': physicalStudy || packages.isNotEmpty,
+      'allowedAppPackages': packages,
+      'physicalStudy': physicalStudy,
+    };
+  }
+
   // ============================================================
   // TIMER DEADLINE VALIDATION
   // ============================================================
