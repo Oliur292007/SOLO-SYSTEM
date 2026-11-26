@@ -19,6 +19,9 @@ object ScreenTimePolicy {
     const val PREFS = "solo_screen_time_policy"
     private const val KEY_OVERRIDES = "category_overrides"
     private const val KEY_ALLOWED = "study_allowed_packages"
+    private const val KEY_QUEST_POLICY_ACTIVE = "quest_app_policy_active"
+    private const val KEY_QUEST_ALLOWED = "quest_allowed_app_packages"
+    private const val KEY_PHYSICAL_STUDY = "quest_physical_study"
     private const val KEY_SOCIAL_LIMIT = "social_limit_minutes"
     private const val KEY_GAME_LIMIT = "game_limit_minutes"
     private const val KEY_YOUTUBE_WARNING = "youtube_warning_minutes"
@@ -57,6 +60,33 @@ object ScreenTimePolicy {
             .putInt(KEY_GAME_LIMIT, (args["gameLimitMinutes"] as? Number)?.toInt() ?: 120)
             .putInt(KEY_YOUTUBE_WARNING, (args["youtubeWarningIntervalMinutes"] as? Number)?.toInt() ?: 5)
             .apply()
+    }
+
+    /** Syncs the temporary app policy for the currently running scheduled Quest. */
+    fun syncQuestAppPolicy(context: Context, args: Map<*, *>) {
+        val enabled = (args["active"] as? Boolean == true) &&
+            (args["questPolicyEnabled"] as? Boolean == true)
+        val allowed = (args["questAllowedPackages"] as? List<*>)
+            ?.filterIsInstance<String>()
+            ?.toSet() ?: emptySet()
+        val physicalStudy = args["physicalStudy"] as? Boolean ?: false
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_QUEST_POLICY_ACTIVE, enabled)
+            .putStringSet(KEY_QUEST_ALLOWED, allowed)
+            .putBoolean(KEY_PHYSICAL_STUDY, physicalStudy)
+            .apply()
+    }
+
+    private fun hasActiveQuestAppPolicy(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_QUEST_POLICY_ACTIVE, false)
+
+    private fun isAllowedByActiveQuest(context: Context, packageName: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_QUEST_POLICY_ACTIVE, false)) return false
+        if (prefs.getBoolean(KEY_PHYSICAL_STUDY, false)) return false
+        val allowed = prefs.getStringSet(KEY_QUEST_ALLOWED, emptySet()) ?: emptySet()
+        return packageName in allowed
     }
 
     fun socialLimitMinutes(context: Context): Int =
@@ -100,7 +130,13 @@ object ScreenTimePolicy {
         if (normalized == "android" || normalized.contains("permissioncontroller") ||
             (ignoreSystemUiOverlay && normalized.contains("systemui"))) return false
 
-        // YouTube is the only built-in exception to pausing the Quest Timer.
+        // During a scheduled Quest, only the selected apps may keep the timer running.
+        // Physical Study therefore pauses on every third-party app.
+        if (hasActiveQuestAppPolicy(context)) {
+            return !isAllowedByActiveQuest(context, packageName)
+        }
+
+        // Outside a custom scheduled-Quest policy, preserve the existing YouTube exception.
         return categoryFor(context, packageName) != "youtube_special"
     }
 
@@ -212,12 +248,16 @@ object ScreenTimePolicy {
 
     fun isStudyAllowed(context: Context, packageName: String): Boolean {
         if (packageName == context.packageName) return true
-        // Telegram remains available during Study Protection as well.
-        if (packageName == "org.telegram.messenger") return true
 
-        // Explicitly allowed apps are available during Study Protection too.
-        // YouTube remains the only built-in app exception; other categories
-        // are not implicitly exempt unless the user explicitly allows them.
+        // A running scheduled Quest temporarily replaces the general allowlist.
+        // Physical Study blocks every third-party app; app-based study allows
+        // only the educational packages explicitly selected for this schedule.
+        if (hasActiveQuestAppPolicy(context)) {
+            return isAllowedByActiveQuest(context, packageName)
+        }
+
+        // Preserve the existing Study Protection policy outside scheduled Quests.
+        if (packageName == "org.telegram.messenger") return true
         val allowed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getStringSet(KEY_ALLOWED, emptySet()) ?: emptySet()
         if (packageName in allowed) return true
