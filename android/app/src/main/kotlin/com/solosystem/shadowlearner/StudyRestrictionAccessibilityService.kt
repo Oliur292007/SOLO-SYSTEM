@@ -552,19 +552,34 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             "com.google.android.cellbroadcastreceiver"
         )
 
-        // The device's selected dialer is exempt only when it is a preinstalled
+        val systemFlags = android.content.pm.ApplicationInfo.FLAG_SYSTEM or
+            android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP
+
+        // The device's selected dialer is exempt only when Android marks it as a preinstalled
         // or updated system app. A user-installed dialer is not a system bypass.
         val isSystemDefaultDialer = runCatching {
             val telecom = getSystemService(Context.TELECOM_SERVICE)
                 as? android.telecom.TelecomManager
             val isSelectedDialer = telecom?.defaultDialerPackage == packageName
             val appInfo = packageManager.getApplicationInfo(packageName, 0)
-            val systemFlags = android.content.pm.ApplicationInfo.FLAG_SYSTEM or
-                android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP
             isSelectedDialer && (appInfo.flags and systemFlags) != 0
         }.getOrDefault(false)
 
-        return isDefaultHomePackage || isCoreAndroidPackage || isSystemDefaultDialer
+        // Resolve the platform's emergency-assist handler dynamically so OEM system
+        // emergency UI remains available without trusting package-name substrings.
+        val isSystemEmergencyHandler = runCatching {
+            val emergencyIntent = Intent("android.intent.action.EMERGENCY_ASSIST")
+            val resolved = packageManager.resolveActivity(
+                emergencyIntent,
+                PackageManager.MATCH_DEFAULT_ONLY
+            )?.activityInfo ?: return@runCatching false
+            val isResolvedHandler = resolved.packageName == packageName
+            val isSystemHandler = (resolved.applicationInfo.flags and systemFlags) != 0
+            isResolvedHandler && isSystemHandler
+        }.getOrDefault(false)
+
+        return isDefaultHomePackage || isCoreAndroidPackage ||
+            isSystemDefaultDialer || isSystemEmergencyHandler
     }
 
     override fun onInterrupt() {
