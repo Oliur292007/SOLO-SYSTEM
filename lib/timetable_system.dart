@@ -10,6 +10,8 @@ class StudyScheduleItem {
   final String startTime;
   final int durationMinutes;
   final bool isOptional;
+  final List<String> allowedAppPackages;
+  final bool physicalStudy;
 
   /// Date key ("YYYY-MM-DD") when this schedule was last completed.
   /// null = not completed today.
@@ -22,6 +24,8 @@ class StudyScheduleItem {
     required this.startTime,
     required this.durationMinutes,
     this.isOptional = false,
+    this.allowedAppPackages = const [],
+    this.physicalStudy = false,
     this.completedDate,
   });
 
@@ -32,6 +36,8 @@ class StudyScheduleItem {
     String? startTime,
     int? durationMinutes,
     bool? isOptional,
+    List<String>? allowedAppPackages,
+    bool? physicalStudy,
     Object? completedDate = _sentinel,
   }) {
     return StudyScheduleItem(
@@ -41,6 +47,8 @@ class StudyScheduleItem {
       startTime: startTime ?? this.startTime,
       durationMinutes: durationMinutes ?? this.durationMinutes,
       isOptional: isOptional ?? this.isOptional,
+      allowedAppPackages: allowedAppPackages ?? this.allowedAppPackages,
+      physicalStudy: physicalStudy ?? this.physicalStudy,
       completedDate: identical(completedDate, _sentinel)
           ? this.completedDate
           : completedDate as String?,
@@ -55,6 +63,8 @@ class StudyScheduleItem {
       'startTime': startTime,
       'durationMinutes': durationMinutes,
       'isOptional': isOptional,
+      'allowedAppPackages': allowedAppPackages,
+      'physicalStudy': physicalStudy,
       'completedDate': completedDate,
     };
   }
@@ -67,6 +77,10 @@ class StudyScheduleItem {
       startTime: json['startTime'] as String,
       durationMinutes: json['durationMinutes'] as int,
       isOptional: json['isOptional'] as bool? ?? false,
+      allowedAppPackages: (json['allowedAppPackages'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(),
+      physicalStudy: json['physicalStudy'] as bool? ?? false,
       completedDate: json['completedDate'] as String?,
     );
   }
@@ -245,6 +259,8 @@ class TimetableSystem extends ChangeNotifier {
     required String startTime,
     required int durationMinutes,
     bool isOptional = false,
+    List<String> allowedAppPackages = const [],
+    bool physicalStudy = false,
     ValueChanged<String>? onError,
   }) async {
     final cleanSubject = subject.trim();
@@ -269,6 +285,8 @@ class TimetableSystem extends ChangeNotifier {
       startTime: startTime,
       durationMinutes: durationMinutes,
       isOptional: isOptional,
+      allowedAppPackages: List.unmodifiable(allowedAppPackages),
+      physicalStudy: physicalStudy,
     );
 
     _schedules.add(item);
@@ -295,6 +313,8 @@ class TimetableSystem extends ChangeNotifier {
     required String startTime,
     required int durationMinutes,
     bool isOptional = false,
+    List<String> allowedAppPackages = const [],
+    bool physicalStudy = false,
     ValueChanged<String>? onError,
   }) async {
     final cleanSubject = subject.trim();
@@ -325,6 +345,8 @@ class TimetableSystem extends ChangeNotifier {
       startTime: startTime,
       durationMinutes: durationMinutes,
       isOptional: isOptional,
+      allowedAppPackages: List.unmodifiable(allowedAppPackages),
+      physicalStudy: physicalStudy,
       completedDate: previous.completedDate, // preserve
     );
 
