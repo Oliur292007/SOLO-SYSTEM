@@ -64,8 +64,8 @@ object ScreenTimePolicy {
 
     /** Syncs the temporary app policy for the currently running scheduled Quest. */
     fun syncQuestAppPolicy(context: Context, args: Map<*, *>) {
-        val enabled = (args["active"] as? Boolean == true) &&
-            (args["questPolicyEnabled"] as? Boolean == true)
+        val enabled = (args["active"] as? Boolean ?: false) &&
+            (args["questPolicyEnabled"] as? Boolean ?: false)
         val allowed = (args["questAllowedPackages"] as? List<*>)
             ?.filterIsInstance<String>()
             ?.toSet() ?: emptySet()
