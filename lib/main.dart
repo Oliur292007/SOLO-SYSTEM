@@ -990,6 +990,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             appVersionLabel: widget.appVersionLabel,
             notificationService: widget.notificationService,
             supabaseService: widget.supabaseService,
+            cloudProgressSync: widget.cloudProgressSync,
             onCheckForUpdates: _checkForAppUpdate,
           ),
         ];
@@ -3691,6 +3692,7 @@ class SettingsPage extends StatelessWidget {
   final String appVersionLabel;
   final MissionNotificationService notificationService;
   final SupabaseService supabaseService;
+  final CloudProgressSync cloudProgressSync;
   final VoidCallback onCheckForUpdates;
 
   const SettingsPage({
@@ -3701,6 +3703,7 @@ class SettingsPage extends StatelessWidget {
     required this.appVersionLabel,
     required this.notificationService,
     required this.supabaseService,
+    required this.cloudProgressSync,
     required this.onCheckForUpdates,
   });
 
@@ -3754,10 +3757,24 @@ class SettingsPage extends StatelessWidget {
 
     await player.setPlayerName(newName);
 
+    var cloudSaved = true;
+    if (cloudProgressSync.isPaired) {
+      cloudSaved = await cloudProgressSync.uploadCurrentProgressNow();
+      if (!cloudSaved) {
+        // Keep the local name and retry through the normal debounced sync path.
+        cloudProgressSync.scheduleSync(delay: const Duration(seconds: 5));
+      }
+    }
+
     if (!context.mounted) return;
 
+    final message = !cloudProgressSync.isPaired
+        ? 'Player name saved on this device. Pair your UID to back it up to cloud.'
+        : cloudSaved
+            ? 'Player name updated and backed up to cloud.'
+            : 'Player name saved locally, but cloud backup failed. It will retry.';
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Player name updated successfully!')),
+      SnackBar(content: Text(message)),
     );
   }
 
