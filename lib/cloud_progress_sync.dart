@@ -32,7 +32,7 @@ class CloudProgressSync {
   static const String _cloudUpdatedKey = 'cloud_progress_updated_ms';
   static const String _lastSnapshotFingerprintKey =
       'cloud_progress_last_snapshot_fingerprint';
-  static const int schemaVersion = 6;
+  static const int schemaVersion = 7;
 
   static const Set<String> _progressKeys = {
     // Player
@@ -69,6 +69,9 @@ class CloudProgressSync {
     'timer_finished',
     'timer_reserved_mp',
     'timer_started_at',
+    'timer_quest_policy_enabled',
+    'timer_quest_allowed_apps',
+    'timer_physical_study',
     'quest_pomodoro_enabled',
     'quest_pomodoro_phase',
     'quest_pomodoro_phase_remaining',
