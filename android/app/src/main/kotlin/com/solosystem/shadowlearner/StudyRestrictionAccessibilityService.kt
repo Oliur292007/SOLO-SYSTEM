@@ -33,6 +33,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         const val PREFS = "solo_system_study_restriction"
         const val KEY_ACTIVE = "study_restriction_active"
         private const val YOUTUBE_WARNING_CHANNEL = "youtube_time_reminders"
+        private const val HOME_TRANSITION_TIMER_GRACE_MS = 6_000L
 
         @Volatile
         var isConnected: Boolean = false
@@ -48,6 +49,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     @Volatile private var foregroundWorker = Executors.newSingleThreadExecutor()
     private val usageCheckInFlight = AtomicBoolean(false)
     private val foregroundCheckInFlight = AtomicBoolean(false)
+    private var pendingHomeTransitionTimerPause: Runnable? = null
 
     @Volatile private var currentForegroundPackage: String? = null
     @Volatile private var currentSessionUsageMs = 0L
@@ -459,8 +461,19 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         if (ScreenTimePolicy.categoryFor(this, packageName) != "youtube_special") {
             youtubeWarningStartedAtElapsed = 0L
         }
-        if (ScreenTimePolicy.shouldPauseQuestTimerForPackage(this, packageName)) {
-            ScreenTimePolicy.pauseRunningQuestTimer(this)
+
+        val shouldPauseTimer =
+            ScreenTimePolicy.shouldPauseQuestTimerForPackage(this, packageName)
+        if (shouldPauseTimer && isDefaultHomePackage(packageName)) {
+            // HOME is often only a transition between Shadow Learner and a selected
+            // study app. Give the destination app time to become foreground before
+            // deciding that the Quest Timer should pause.
+            scheduleHomeTransitionTimerPause()
+        } else {
+            cancelHomeTransitionTimerPause()
+            if (shouldPauseTimer) {
+                ScreenTimePolicy.pauseRunningQuestTimer(this)
+            }
         }
 
         if (isSystemAllowedPackage(packageName)) return
@@ -521,18 +534,37 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         return power.isInteractive
     }
 
+    private fun isDefaultHomePackage(packageName: String): Boolean = runCatching {
+        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        packageManager.resolveActivity(
+            homeIntent,
+            PackageManager.MATCH_DEFAULT_ONLY
+        )?.activityInfo?.packageName == packageName
+    }.getOrDefault(false)
+
+    private fun scheduleHomeTransitionTimerPause() {
+        if (pendingHomeTransitionTimerPause != null) return
+        val pauseCheck = Runnable {
+            pendingHomeTransitionTimerPause = null
+            if (ScreenTimePolicy.shouldPauseQuestTimer(this)) {
+                ScreenTimePolicy.pauseRunningQuestTimer(this)
+            }
+        }
+        pendingHomeTransitionTimerPause = pauseCheck
+        handler.postDelayed(pauseCheck, HOME_TRANSITION_TIMER_GRACE_MS)
+    }
+
+    private fun cancelHomeTransitionTimerPause() {
+        pendingHomeTransitionTimerPause?.let { handler.removeCallbacks(it) }
+        pendingHomeTransitionTimerPause = null
+    }
+
     private fun isSystemAllowedPackage(packageName: String): Boolean {
         if (packageName == this.packageName) return true
 
         // Keep the actual HOME surface available to avoid a redirect loop.
         // This is resolved by Android instead of guessing from package names.
-        val isDefaultHomePackage = runCatching {
-            val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-            packageManager.resolveActivity(
-                homeIntent,
-                PackageManager.MATCH_DEFAULT_ONLY
-            )?.activityInfo?.packageName == packageName
-        }.getOrDefault(false)
+        val isHomePackage = isDefaultHomePackage(packageName)
 
         // Exact Android component package IDs only. Broad substring checks such
         // as "dialer", "telecom", "emergency", or "clock" can accidentally
@@ -578,7 +610,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
             isResolvedHandler && isSystemHandler
         }.getOrDefault(false)
 
-        return isDefaultHomePackage || isCoreAndroidPackage ||
+        return isHomePackage || isCoreAndroidPackage ||
             isSystemDefaultDialer || isSystemEmergencyHandler
     }
 
@@ -594,6 +626,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         // A reconnect must rediscover the foreground app instead of reusing stale state.
         currentForegroundPackage = null
         lastKnownForegroundPackageForTimer = null
+        pendingHomeTransitionTimerPause = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
         foregroundWorker.shutdownNow()
@@ -605,6 +638,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         isConnected = false
         currentForegroundPackage = null
         lastKnownForegroundPackageForTimer = null
+        pendingHomeTransitionTimerPause = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
         foregroundWorker.shutdownNow()

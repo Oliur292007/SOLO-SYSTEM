@@ -599,7 +599,9 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
     _questTimerPauseCheckTimer?.cancel();
     // Wait for Android to publish the destination app's foreground event.
     _questTimerPauseCheckTimer = Timer(
-      const Duration(milliseconds: 900),
+      // HOME can be a short transition while opening a selected study app.
+      // The native service uses the same grace period before pausing on HOME.
+      const Duration(milliseconds: 6500),
       () async {
         if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
           return;
