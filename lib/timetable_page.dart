@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'supabase_service.dart';
 import 'timetable_system.dart';
 
 class TimetablePage extends StatefulWidget {
   final TimetableSystem timetableSystem;
+  final SupabaseService supabaseService;
 
   const TimetablePage({
     super.key,
     required this.timetableSystem,
+    required this.supabaseService,
   });
 
   @override
@@ -38,6 +41,19 @@ class _TimetablePageState extends State<TimetablePage> {
     int day = existing?.dayOfWeek ?? selectedDay;
     int duration = existing?.durationMinutes ?? 60;
     bool isOptional = existing?.isOptional ?? false;
+    bool physicalStudy = existing?.physicalStudy ?? false;
+    final selectedAppPackages = <String>{
+      if (!physicalStudy) ...?existing?.allowedAppPackages,
+    };
+    final educationalApps = widget.supabaseService.whitelist
+        .where((app) =>
+            app['category']?.toString() == 'allowed' &&
+            app['screen_time_category']?.toString() == 'education' &&
+            (app['package_name']?.toString().isNotEmpty ?? false))
+        .toList()
+      ..sort((a, b) => (a['app_name'] ?? '').toString().compareTo(
+            (b['app_name'] ?? '').toString(),
+          ));
     bool isSaving = false;
 
     TimeOfDay startTime = existing != null
@@ -62,6 +78,17 @@ class _TimetablePageState extends State<TimetablePage> {
               if (subject.isEmpty) {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
                   const SnackBar(content: Text('Enter a subject name')),
+                );
+                return;
+              }
+
+              if (!physicalStudy && selectedAppPackages.isEmpty) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Select at least one educational app or Physical Study.',
+                    ),
+                  ),
                 );
                 return;
               }
@@ -93,6 +120,8 @@ class _TimetablePageState extends State<TimetablePage> {
                   startTime: formattedTime,
                   durationMinutes: duration,
                   isOptional: isOptional,
+                  allowedAppPackages: selectedAppPackages.toList(),
+                  physicalStudy: physicalStudy,
                 );
                 if (!success) {
                   errorMessage =
@@ -106,6 +135,8 @@ class _TimetablePageState extends State<TimetablePage> {
                   startTime: formattedTime,
                   durationMinutes: duration,
                   isOptional: isOptional,
+                  allowedAppPackages: selectedAppPackages.toList(),
+                  physicalStudy: physicalStudy,
                 );
                 if (!success) {
                   errorMessage =
@@ -236,6 +267,85 @@ class _TimetablePageState extends State<TimetablePage> {
                                 setDialogState(() => duration = value);
                               }
                             },
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Theme.of(context).dividerColor),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ExpansionTile(
+                        initiallyExpanded: true,
+                        leading: const Icon(Icons.lock_open, color: cyan),
+                        title: const Text('Quest App Access'),
+                        subtitle: Text(
+                          physicalStudy
+                              ? 'Physical Study — all third-party apps locked'
+                              : selectedAppPackages.isEmpty
+                                  ? 'Choose educational apps'
+                                  : '${selectedAppPackages.length} educational app(s) selected',
+                        ),
+                        children: [
+                          CheckboxListTile(
+                            dense: true,
+                            value: physicalStudy,
+                            title: const Text(
+                              'Physical Study',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: const Text(
+                              'Lock all third-party apps during this Quest.',
+                            ),
+                            onChanged: isSaving
+                                ? null
+                                : (value) {
+                                    setDialogState(() {
+                                      physicalStudy = value ?? false;
+                                      if (physicalStudy) {
+                                        selectedAppPackages.clear();
+                                      }
+                                    });
+                                  },
+                          ),
+                          const Divider(height: 1),
+                          if (educationalApps.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(14),
+                              child: Text(
+                                'No educational apps found in the whitelist. Connect and sync to load them.',
+                                textAlign: TextAlign.center,
+                              ),
+                            )
+                          else
+                            ...educationalApps.map((app) {
+                              final packageName = app['package_name'].toString();
+                              final appName = app['app_name']?.toString() ??
+                                  packageName;
+                              return CheckboxListTile(
+                                dense: true,
+                                value: selectedAppPackages.contains(packageName),
+                                title: Text(appName),
+                                subtitle: Text(
+                                  packageName,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                onChanged: isSaving || physicalStudy
+                                    ? null
+                                    : (value) {
+                                        setDialogState(() {
+                                          if (value == true) {
+                                            selectedAppPackages.add(packageName);
+                                          } else {
+                                            selectedAppPackages.remove(packageName);
+                                          }
+                                        });
+                                      },
+                              );
+                            }),
+                        ],
+                      ),
                     ),
 
                     const SizedBox(height: 12),
