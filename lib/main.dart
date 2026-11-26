@@ -963,6 +963,7 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
             timetableSystem: widget.timetableSystem,
             restSystem: widget.restSystem,
             studyTimer: widget.studyTimer,
+            supabaseService: widget.supabaseService,
             securityController: widget.securityController,
             appVersionLabel: widget.appVersionLabel,
             onNotificationsTap: () => Navigator.of(context).push(
@@ -1054,6 +1055,7 @@ class DashboardPage extends StatelessWidget {
   final TimetableSystem timetableSystem;
   final RestSystem restSystem;
   final StudyTimer studyTimer;
+  final SupabaseService supabaseService;
   final SecurityController securityController;
   final String appVersionLabel;
   final VoidCallback onNotificationsTap;
@@ -1065,6 +1067,7 @@ class DashboardPage extends StatelessWidget {
     required this.timetableSystem,
     required this.restSystem,
     required this.studyTimer,
+    required this.supabaseService,
     required this.securityController,
     required this.appVersionLabel,
     required this.onNotificationsTap,
@@ -1698,6 +1701,7 @@ class DashboardPage extends StatelessWidget {
                           MaterialPageRoute(
                             builder: (_) => TimetablePage(
                               timetableSystem: timetableSystem,
+                              supabaseService: supabaseService,
                             ),
                           ),
                         );

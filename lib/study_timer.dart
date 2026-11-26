@@ -15,6 +15,9 @@ class StudyTimer extends ChangeNotifier {
   static const String _finishedKey = 'timer_finished';
   static const String _reservedMpKey = 'timer_reserved_mp';
   static const String _startedAtKey = 'timer_started_at';
+  static const String _questPolicyEnabledKey = 'timer_quest_policy_enabled';
+  static const String _questAllowedAppsKey = 'timer_quest_allowed_apps';
+  static const String _physicalStudyKey = 'timer_physical_study';
 
   /// Cancel damage applies only if elapsed session ≥ this threshold.
   static const Duration _cancelDamageThreshold = Duration(minutes: 5);
@@ -32,7 +35,12 @@ class StudyTimer extends ChangeNotifier {
     try {
       await _restrictionChannel.invokeMethod<void>(
         'setStudyRestriction',
-        {'active': isRunning},
+        {
+          'active': isRunning,
+          'questPolicyEnabled': isRunning && _questPolicyEnabled,
+          'questAllowedPackages': _questAllowedAppPackages,
+          'physicalStudy': _physicalStudy,
+        },
       );
     } on PlatformException catch (error) {
       debugPrint('APP RESTRICTION SYNC ERROR: ${error.message}');
@@ -56,6 +64,9 @@ class StudyTimer extends ChangeNotifier {
   bool _isClaiming = false;
 
   int reservedMp = 0;
+  bool _questPolicyEnabled = false;
+  List<String> _questAllowedAppPackages = [];
+  bool _physicalStudy = false;
 
   int get reservedMpAmount => reservedMp;
   DateTime? get startedAtTime => startedAt;
@@ -113,6 +124,10 @@ class StudyTimer extends ChangeNotifier {
     await prefs.reload();
 
     activeQuestId = prefs.getString(_questIdKey);
+    _questPolicyEnabled = prefs.getBool(_questPolicyEnabledKey) ?? false;
+    _questAllowedAppPackages =
+        prefs.getStringList(_questAllowedAppsKey) ?? <String>[];
+    _physicalStudy = prefs.getBool(_physicalStudyKey) ?? false;
     remainingSeconds = prefs.getInt(_remainingKey) ?? 0;
     endTime = prefs.getInt(_endTimeKey);
     isRunning = prefs.getBool(_runningKey) ?? false;
@@ -159,6 +174,12 @@ class StudyTimer extends ChangeNotifier {
     if (activeQuestId == null) {
       reservedMp = 0;
       startedAt = null;
+      _questPolicyEnabled = false;
+      _questAllowedAppPackages = [];
+      _physicalStudy = false;
+      await prefs.remove(_questPolicyEnabledKey);
+      await prefs.remove(_questAllowedAppsKey);
+      await prefs.remove(_physicalStudyKey);
       await prefs.remove(_reservedMpKey);
       await prefs.remove(_startedAtKey);
     }
@@ -222,6 +243,13 @@ class StudyTimer extends ChangeNotifier {
     if (availableMp(player) < mpCost) return false;
 
     activeQuestId = questId;
+    final appPolicy = questSystem?.questAppPolicyForQuest(questId) ??
+        const <String, dynamic>{};
+    _questPolicyEnabled = appPolicy['enabled'] == true;
+    _questAllowedAppPackages = List<String>.from(
+      appPolicy['allowedAppPackages'] as List? ?? const <String>[],
+    );
+    _physicalStudy = appPolicy['physicalStudy'] == true;
     reservedMp = mpCost;
 
     remainingSeconds = durationMinutes * 60;
@@ -336,6 +364,9 @@ class StudyTimer extends ChangeNotifier {
     remainingSeconds = 0;
     endTime = null;
     startedAt = null;
+    _questPolicyEnabled = false;
+    _questAllowedAppPackages = [];
+    _physicalStudy = false;
 
     isRunning = false;
     isFinished = false;
@@ -351,6 +382,9 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_finishedKey);
     await prefs.remove(_reservedMpKey);
     await prefs.remove(_startedAtKey);
+    await prefs.remove(_questPolicyEnabledKey);
+    await prefs.remove(_questAllowedAppsKey);
+    await prefs.remove(_physicalStudyKey);
 
     await _syncNativeRestriction();
     notifyListeners();
@@ -488,6 +522,9 @@ class StudyTimer extends ChangeNotifier {
     remainingSeconds = 0;
     endTime = null;
     startedAt = null;
+    _questPolicyEnabled = false;
+    _questAllowedAppPackages = [];
+    _physicalStudy = false;
 
     isRunning = false;
     isFinished = false;
@@ -503,6 +540,9 @@ class StudyTimer extends ChangeNotifier {
     await prefs.remove(_finishedKey);
     await prefs.remove(_reservedMpKey);
     await prefs.remove(_startedAtKey);
+    await prefs.remove(_questPolicyEnabledKey);
+    await prefs.remove(_questAllowedAppsKey);
+    await prefs.remove(_physicalStudyKey);
 
     await _syncNativeRestriction();
     notifyListeners();
@@ -525,6 +565,9 @@ class StudyTimer extends ChangeNotifier {
     await prefs.setBool(_runningKey, isRunning);
     await prefs.setBool(_finishedKey, isFinished);
     await prefs.setInt(_reservedMpKey, reservedMp);
+    await prefs.setBool(_questPolicyEnabledKey, _questPolicyEnabled);
+    await prefs.setStringList(_questAllowedAppsKey, _questAllowedAppPackages);
+    await prefs.setBool(_physicalStudyKey, _physicalStudy);
 
     if (startedAt != null) {
       await prefs.setInt(_startedAtKey, startedAt!.millisecondsSinceEpoch);

@@ -23,7 +23,8 @@ class MainActivity : FlutterActivity() {
                         result.success(ScreenTimePolicy.shouldPauseQuestTimer(this))
                     }
                     "setStudyRestriction" -> {
-                        val active = call.argument<Boolean>("active") ?: false
+                        val args = call.arguments as? Map<*, *> ?: emptyMap<Any, Any>()
+                        val active = args["active"] as? Boolean ?: false
                         getSharedPreferences(
                             StudyRestrictionAccessibilityService.PREFS,
                             MODE_PRIVATE
@@ -31,6 +32,7 @@ class MainActivity : FlutterActivity() {
                             StudyRestrictionAccessibilityService.KEY_ACTIVE,
                             active
                         ).apply()
+                        ScreenTimePolicy.syncQuestAppPolicy(this, args)
                         result.success(true)
                     }
                     "syncStudyProtectionSchedules" -> {
