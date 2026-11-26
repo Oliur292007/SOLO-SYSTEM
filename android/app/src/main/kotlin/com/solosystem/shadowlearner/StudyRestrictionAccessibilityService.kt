@@ -58,6 +58,34 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     private var currentUsageDay = usageDayKey()
     @Volatile private var youtubeWarningStartedAtElapsed = 0L
     private var youtubeWarningNotificationId = 54_000
+    private var pendingQuestTimerPausePackage: String? = null
+
+    private val questTimerPauseRunnable = Runnable {
+        val packageName = pendingQuestTimerPausePackage ?: return@Runnable
+        // Only pause if the same destination is still foreground after the
+        // grace period. A transient HOME/launcher transition must not win.
+        if (currentForegroundPackage == packageName &&
+            ScreenTimePolicy.shouldPauseQuestTimerForPackage(this, packageName)
+        ) {
+            ScreenTimePolicy.pauseRunningQuestTimer(this)
+        }
+    }
+
+    private fun scheduleQuestTimerPauseCheck(packageName: String) {
+        if (!ScreenTimePolicy.shouldPauseQuestTimerForPackage(this, packageName)) {
+            handler.removeCallbacks(questTimerPauseRunnable)
+            pendingQuestTimerPausePackage = null
+            return
+        }
+
+        // UsageStats polling can report the same package every second. Keep
+        // the original deadline instead of restarting the 10-second grace.
+        if (pendingQuestTimerPausePackage == packageName) return
+
+        handler.removeCallbacks(questTimerPauseRunnable)
+        pendingQuestTimerPausePackage = packageName
+        handler.postDelayed(questTimerPauseRunnable, 10_000L)
+    }
 
     /**
      * Independent background foreground-app polling. Accessibility events remain
@@ -459,9 +487,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         if (ScreenTimePolicy.categoryFor(this, packageName) != "youtube_special") {
             youtubeWarningStartedAtElapsed = 0L
         }
-        if (ScreenTimePolicy.shouldPauseQuestTimerForPackage(this, packageName)) {
-            ScreenTimePolicy.pauseRunningQuestTimer(this)
-        }
+        scheduleQuestTimerPauseCheck(packageName)
 
         if (isSystemAllowedPackage(packageName)) return
         if (isEmergencyUnlockActive()) {
