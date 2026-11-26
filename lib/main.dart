@@ -597,9 +597,9 @@ class _SystemHomeState extends State<SystemHome> with WidgetsBindingObserver {
 
   void _scheduleQuestTimerBackgroundCheck() {
     _questTimerPauseCheckTimer?.cancel();
-    // Wait for Android to publish the destination app's foreground event.
+    // Give Android up to 10 seconds to settle on the actual destination app.
     _questTimerPauseCheckTimer = Timer(
-      const Duration(milliseconds: 900),
+      const Duration(seconds: 10),
       () async {
         if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
           return;
