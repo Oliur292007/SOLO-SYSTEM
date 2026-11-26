@@ -37,7 +37,9 @@ BEGIN
 
     DELETE FROM public.telegram_pending_actions
      WHERE uid = upper(p_uid)
-        OR (v_telegram_id IS NOT NULL AND telegram_user_id = v_telegram_id);
+        OR (v_telegram_id IS NOT NULL AND telegram_user_id = v_telegram_id)
+        OR (v_phone IS NOT NULL AND regexp_replace(COALESCE(phone_number, ''), '[^0-9]', '', 'g')
+                                  = regexp_replace(v_phone, '[^0-9]', '', 'g'));
     GET DIAGNOSTICS v_count = ROW_COUNT;
     v_deleted := v_deleted || jsonb_build_object('telegram_pending_actions', v_count);
     v_total := v_total + v_count;
@@ -93,7 +95,9 @@ BEGIN
     v_deleted := v_deleted || jsonb_build_object('telegram_links', v_count);
     v_total := v_total + v_count;
 
-    DELETE FROM public.audit_log WHERE uid = upper(p_uid);
+    DELETE FROM public.audit_log
+     WHERE uid = upper(p_uid)
+        OR metadata ->> 'uid' = upper(p_uid);
     GET DIAGNOSTICS v_count = ROW_COUNT;
     v_deleted := v_deleted || jsonb_build_object('audit_log', v_count);
     v_total := v_total + v_count;
