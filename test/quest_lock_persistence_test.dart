@@ -54,6 +54,41 @@ void main() {
     player.dispose();
   });
 
+  test('cancelled quest timer loses its saved deadline-start eligibility',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'quest_date': DateTime.now().toIso8601String().substring(0, 10),
+      'quest_timer_starts': '{}',
+    });
+
+    final player = PlayerSystem();
+    await player.loadPlayer();
+    final rest = RestSystem(player: player);
+    await rest.loadRest();
+    final timetable = TimetableSystem();
+    await timetable.loadTimetable();
+    final quests = QuestSystem(
+      timetableSystem: timetable,
+      restSystem: rest,
+    );
+    await quests.loadQuests();
+
+    final startedAt = DateTime.now();
+    await quests.registerTimerStart('test_quest', startedAt);
+    expect(quests.timerStartedAt('test_quest'), startedAt);
+
+    await quests.clearTimerStart('test_quest');
+
+    expect(quests.timerStartedAt('test_quest'), isNull);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('quest_timer_starts'), isNull);
+
+    quests.dispose();
+    rest.dispose();
+    timetable.dispose();
+    player.dispose();
+  });
+
   test('expired penalty does not reactivate after loading persisted state',
       () async {
     final now = DateTime.now();
