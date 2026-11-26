@@ -45,7 +45,9 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
     @Volatile private var usageWorker = Executors.newSingleThreadExecutor()
+    @Volatile private var foregroundWorker = Executors.newSingleThreadExecutor()
     private val usageCheckInFlight = AtomicBoolean(false)
+    private val foregroundCheckInFlight = AtomicBoolean(false)
 
     @Volatile private var currentForegroundPackage: String? = null
     @Volatile private var currentSessionUsageMs = 0L
@@ -56,6 +58,93 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
     private var currentUsageDay = usageDayKey()
     @Volatile private var youtubeWarningStartedAtElapsed = 0L
     private var youtubeWarningNotificationId = 54_000
+
+    /**
+     * Independent background foreground-app polling. Accessibility events remain
+     * the immediate path; this UsageStats path catches missed OEM callbacks while
+     * the AccessibilityService stays connected in the background.
+     */
+    private val foregroundPackageCheck = object : Runnable {
+        override fun run() {
+            if (!isConnected) return
+            if (!ScreenTimePolicy.hasUsageAccess(this@StudyRestrictionAccessibilityService)) {
+                scheduleForegroundPolling(2_000L)
+                return
+            }
+            if (!foregroundCheckInFlight.compareAndSet(false, true)) {
+                scheduleForegroundPolling(500L)
+                return
+            }
+
+            try {
+                foregroundWorker.execute {
+                    try {
+                        val detectedPackage = readForegroundPackageFromUsageStats()
+                        if (detectedPackage != null) {
+                            handler.post {
+                                if (!isConnected) return@post
+                                if (currentForegroundPackage != detectedPackage) {
+                                    currentForegroundPackage = detectedPackage
+                                    currentSessionUsageMs = 0L
+                                    lastUsageTickElapsed = SystemClock.elapsedRealtime()
+                                }
+                                lastKnownForegroundPackageForTimer = detectedPackage
+                                enforceForegroundPackage(detectedPackage)
+                            }
+                        }
+                    } catch (error: Exception) {
+                        Log.w("ShadowLearnerAccess", "Background foreground-package poll failed", error)
+                    } finally {
+                        foregroundCheckInFlight.set(false)
+                        handler.post {
+                            if (isConnected) scheduleForegroundPolling(1_000L)
+                        }
+                    }
+                }
+            } catch (error: RejectedExecutionException) {
+                foregroundCheckInFlight.set(false)
+                Log.w("ShadowLearnerAccess", "Foreground worker is restarting", error)
+                scheduleForegroundPolling(1_000L)
+            }
+        }
+    }
+
+    private fun scheduleForegroundPolling(delayMs: Long = 1_000L) {
+        if (!isConnected) return
+        handler.removeCallbacks(foregroundPackageCheck)
+        handler.postDelayed(foregroundPackageCheck, delayMs)
+    }
+
+    /**
+     * Resolve the most recent foreground transition from the last 15 seconds.
+     * Only package names and event types are read; no app content is inspected.
+     */
+    private fun readForegroundPackageFromUsageStats(): String? {
+        val manager = getSystemService(Context.USAGE_STATS_SERVICE)
+            as android.app.usage.UsageStatsManager
+        val now = System.currentTimeMillis()
+        val events = manager.queryEvents(now - 15_000L, now)
+        val event = android.app.usage.UsageEvents.Event()
+        var foregroundPackage: String? = null
+
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            val packageName = event.packageName ?: continue
+            when (event.eventType) {
+                android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED,
+                android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                    foregroundPackage = packageName
+                }
+                android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED,
+                android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                    if (foregroundPackage == packageName) {
+                        foregroundPackage = null
+                    }
+                }
+            }
+        }
+        return foregroundPackage
+    }
 
     private val screenTimeCheck = object : Runnable {
         override fun run() {
@@ -310,7 +399,11 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         if (usageWorker.isShutdown || usageWorker.isTerminated) {
             usageWorker = Executors.newSingleThreadExecutor()
         }
+        if (foregroundWorker.isShutdown || foregroundWorker.isTerminated) {
+            foregroundWorker = Executors.newSingleThreadExecutor()
+        }
         usageCheckInFlight.set(false)
+        foregroundCheckInFlight.set(false)
         currentForegroundPackage = null
         lastKnownForegroundPackageForTimer = null
         lastUsageTickElapsed = SystemClock.elapsedRealtime()
@@ -326,6 +419,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         lastBlockedPackage = null
         scheduleMonitoring()
         restoreForegroundPackageFromUsageStats()
+        scheduleForegroundPolling()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -345,64 +439,56 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
                 ?: event.packageName?.toString()?.takeIf { it.isNotBlank() }
                 ?: return
 
-            lastKnownForegroundPackageForTimer = openedPackage
-            if (ScreenTimePolicy.categoryFor(this, openedPackage) != "youtube_special") {
-                youtubeWarningStartedAtElapsed = 0L
-            }
-            if (ScreenTimePolicy.shouldPauseQuestTimerForPackage(this, openedPackage)) {
-                ScreenTimePolicy.pauseRunningQuestTimer(this)
-            }
             if (currentForegroundPackage != openedPackage) {
                 currentForegroundPackage = openedPackage
-                // Do not query the complete UsageStats event history on Android's
-                // Accessibility callback thread. The worker handles that separately.
                 currentSessionUsageMs = 0L
                 lastUsageTickElapsed = SystemClock.elapsedRealtime()
             }
-
-            if (isSystemAllowedPackage(openedPackage)) return
-
-            // A developer-authorized emergency window temporarily bypasses every
-            // app restriction. The absolute expiry is checked natively so the
-            // bypass also expires when Flutter is closed or the device restarts.
-            if (isEmergencyUnlockActive()) {
-                scheduleMonitoring()
-                return
-            }
-
-            // Penalty and Night Lock override normal app exceptions, including YouTube.
-            // The app itself, launcher, phone and emergency/system surfaces remain available.
-            if (isPenaltyLockActive()) {
-                if (ScreenTimePolicy.isPenaltyAllowed(this, openedPackage)) {
-                    scheduleMonitoring()
-                    return
-                }
-                redirectHome(openedPackage)
-                return
-            }
-
-            // Study Protection is time-critical and uses only a SharedPreferences
-            // read here; it never waits for the UsageStats worker.
-            if (isStudyProtectionActive()) {
-                // Education / YouTube-special and explicitly allowed packages
-                // remain available during Study Protection.
-                if (ScreenTimePolicy.isStudyAllowed(this, openedPackage)) {
-                    // YouTube is allowed during Study Protection, but daily
-                    // Screen Time monitoring must continue in the background.
-                    scheduleMonitoring()
-                    return
-                }
-                redirectHome(openedPackage)
-                return
-            }
-
-            // Screen Time evaluation is asynchronous and cannot block accessibility.
-            if (ScreenTimePolicy.hasUsageAccess(this)) {
-                scheduleMonitoring()
-            }
+            enforceForegroundPackage(openedPackage)
         } catch (error: Exception) {
             Log.e("ShadowLearnerAccess", "Accessibility event processing failed", error)
         }
+    }
+
+    /**
+     * Shared enforcement for Accessibility events and background UsageStats polling.
+     * PR #17 allowlists and Emergency Unlock are evaluated in one place.
+     */
+    private fun enforceForegroundPackage(packageName: String) {
+        lastKnownForegroundPackageForTimer = packageName
+        if (ScreenTimePolicy.categoryFor(this, packageName) != "youtube_special") {
+            youtubeWarningStartedAtElapsed = 0L
+        }
+        if (ScreenTimePolicy.shouldPauseQuestTimerForPackage(this, packageName)) {
+            ScreenTimePolicy.pauseRunningQuestTimer(this)
+        }
+
+        if (isSystemAllowedPackage(packageName)) return
+        if (isEmergencyUnlockActive()) {
+            scheduleMonitoring()
+            return
+        }
+
+        // Penalty and Night Lock take precedence over normal Study Protection exceptions.
+        if (isPenaltyLockActive()) {
+            if (ScreenTimePolicy.isPenaltyAllowed(this, packageName)) {
+                scheduleMonitoring()
+            } else {
+                redirectHome(packageName)
+            }
+            return
+        }
+
+        if (isStudyProtectionActive()) {
+            if (ScreenTimePolicy.isStudyAllowed(this, packageName)) {
+                scheduleMonitoring()
+            } else {
+                redirectHome(packageName)
+            }
+            return
+        }
+
+        if (ScreenTimePolicy.hasUsageAccess(this)) scheduleMonitoring()
     }
 
     private fun redirectHome(packageName: String) {
@@ -465,6 +551,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         lastKnownForegroundPackageForTimer = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
+        foregroundWorker.shutdownNow()
         return super.onUnbind(intent)
     }
 
@@ -475,6 +562,7 @@ class StudyRestrictionAccessibilityService : AccessibilityService() {
         lastKnownForegroundPackageForTimer = null
         handler.removeCallbacksAndMessages(null)
         usageWorker.shutdownNow()
+        foregroundWorker.shutdownNow()
         super.onDestroy()
     }
 }
