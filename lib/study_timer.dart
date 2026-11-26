@@ -327,7 +327,13 @@ class StudyTimer extends ChangeNotifier {
 
   /// Cancels the timer. Applies HP damage if the session ran long enough.
   /// Returns the HP damage applied (0 if no damage).
-  Future<int> cancel({PlayerSystem? player}) async {
+  Future<int> cancel({
+    PlayerSystem? player,
+    QuestSystem? questSystem,
+  }) async {
+    // Keep the quest ID until its deadline-start record has been cleared.
+    final cancelledQuestId = activeQuestId;
+
     // Calculate cancel damage BEFORE clearing state.
     int hpDamageApplied = 0;
 
@@ -373,6 +379,10 @@ class StudyTimer extends ChangeNotifier {
     _isClaiming = false;
 
     reservedMp = 0;
+
+    if (questSystem != null && cancelledQuestId != null) {
+      await questSystem.clearTimerStart(cancelledQuestId);
+    }
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_questIdKey);
