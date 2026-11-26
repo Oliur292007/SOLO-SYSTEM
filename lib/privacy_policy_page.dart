@@ -189,7 +189,7 @@ class PrivacyPolicyPage extends StatelessWidget {
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.telegram, color: _accent),
+                    leading: const Icon(Icons.send_rounded, color: _accent),
                     title: const Text('@SOLO_SYSTEM_BOT'),
                     subtitle: const Text('Telegram support'),
                     onTap: _openTelegram,
