@@ -343,9 +343,14 @@ class QuestSystem extends ChangeNotifier {
 
   Future<void> registerTimerStart(String questId, DateTime startedAt) async {
     _timerStarts[questId] = startedAt.millisecondsSinceEpoch;
+    await _saveTimerStarts();
+  }
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_timerStartsKey, jsonEncode(_timerStarts));
+  /// Removes deadline eligibility when a timer session is explicitly cancelled.
+  /// Pausing a session does not call this method, so pause/resume keeps eligibility.
+  Future<void> clearTimerStart(String questId) async {
+    if (_timerStarts.remove(questId) == null) return;
+    await _saveTimerStarts();
   }
 
   ({bool allowed, String? reason}) canStartTimer(String questId) {
