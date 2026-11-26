@@ -75,7 +75,10 @@ void main() {
 
     final startedAt = DateTime.now();
     await quests.registerTimerStart('test_quest', startedAt);
-    expect(quests.timerStartedAt('test_quest'), startedAt);
+    expect(
+      quests.timerStartedAt('test_quest')!.millisecondsSinceEpoch,
+      startedAt.millisecondsSinceEpoch,
+    );
 
     await quests.clearTimerStart('test_quest');
 
